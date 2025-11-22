@@ -1,0 +1,64 @@
+{
+  "name": "beadsx",
+  "displayName": "Beads Issue Tracker",
+  "description": "VSCode panel for viewing beads issue tracking state",
+  "version": "0.0.1",
+  "publisher": "beadsx",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "beads",
+          "title": "Beads",
+          "icon": "$(checklist)"
+        }
+      ]
+    },
+    "views": {
+      "beads": [
+        {
+          "id": "beadsIssues",
+          "name": "Issues"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "beads.refresh",
+        "title": "Refresh Issues",
+        "icon": "$(refresh)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "beads.refresh",
+          "when": "view == beadsIssues",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.54.0",
+    "typescript": "^5.3.2"
+  }
+}
