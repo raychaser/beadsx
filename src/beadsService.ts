@@ -18,6 +18,12 @@ function log(message: string): void {
   }
 }
 
+function getBdCommand(): string {
+  const config = vscode.workspace.getConfiguration('beads');
+  const customPath = config.get<string>('commandPath', '');
+  return customPath || 'bd';
+}
+
 export interface BeadsDependency {
   issue_id: string;
   depends_on_id: string;
@@ -43,7 +49,8 @@ export interface BeadsIssue {
 
 export async function listReadyIssues(workspaceRoot: string): Promise<BeadsIssue[]> {
   try {
-    const { stdout, stderr } = await execAsync('bd ready --json', {
+    const bdCmd = getBdCommand();
+    const { stdout, stderr } = await execAsync(`${bdCmd} ready --json`, {
       cwd: workspaceRoot
     });
 
@@ -72,9 +79,9 @@ export type FilterMode = 'all' | 'open' | 'ready';
 
 export async function exportIssuesWithDeps(workspaceRoot: string): Promise<BeadsIssue[]> {
   try {
-    // Use full path to bd to avoid PATH issues in VSCode
-    log(`exportIssuesWithDeps called with workspaceRoot: ${workspaceRoot}`);
-    const { stdout, stderr } = await execAsync('/opt/homebrew/bin/bd export', {
+    const bdCmd = getBdCommand();
+    log(`exportIssuesWithDeps called with workspaceRoot: ${workspaceRoot}, bdCmd: ${bdCmd}`);
+    const { stdout, stderr } = await execAsync(`${bdCmd} export`, {
       cwd: workspaceRoot
     });
 
@@ -125,7 +132,8 @@ export async function exportIssuesWithDeps(workspaceRoot: string): Promise<Beads
 // Export function to get error info
 export async function testBdCommand(workspaceRoot: string): Promise<string> {
   try {
-    const { stdout, stderr } = await execAsync('/opt/homebrew/bin/bd export', {
+    const bdCmd = getBdCommand();
+    const { stdout, stderr } = await execAsync(`${bdCmd} export`, {
       cwd: workspaceRoot
     });
     return `stdout length: ${stdout.length}, stderr: ${stderr || 'none'}, lines: ${stdout.trim().split('\n').length}`;
