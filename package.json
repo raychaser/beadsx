@@ -74,7 +74,7 @@
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
     "package": "vsce package --allow-missing-repository",
-    "install-ext": "vsce package --allow-missing-repository && cursor --install-extension beadsx-0.0.1.vsix --force"
+    "install-ext": "vsce package --allow-missing-repository && cursor --install-extension beadsx-*.vsix --force"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
