@@ -35,10 +35,20 @@
         "command": "beads.refresh",
         "title": "Refresh Issues",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "beads.filter",
+        "title": "Filter Issues",
+        "icon": "$(filter)"
       }
     ],
     "menus": {
       "view/title": [
+        {
+          "command": "beads.filter",
+          "when": "view == beadsIssues",
+          "group": "navigation"
+        },
         {
           "command": "beads.refresh",
           "when": "view == beadsIssues",
