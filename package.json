@@ -94,8 +94,8 @@
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
     "package": "vsce package --allow-missing-repository",
-    "install-ext": "vsce package --allow-missing-repository && code --install-extension beadsx-*.vsix --force",
-    "install-ext-cursor": "vsce package --allow-missing-repository && cursor --install-extension beadsx-*.vsix --force"
+    "install-ext": "rm -f beadsx-*.vsix && vsce package --allow-missing-repository && code --install-extension beadsx-*.vsix --force",
+    "install-ext-cursor": "rm -f beadsx-*.vsix && vsce package --allow-missing-repository && cursor --install-extension beadsx-*.vsix --force"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
