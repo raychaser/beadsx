@@ -26,39 +26,6 @@ export interface BeadsIssue {
   parentId?: string; // Computed: ID of parent issue (for parent-child dependencies)
 }
 
-export async function listIssues(workspaceRoot: string): Promise<BeadsIssue[]> {
-  try {
-    console.log('beadsService: listIssues called with workspaceRoot:', workspaceRoot);
-
-    const { stdout, stderr } = await execAsync('bd list --json', {
-      cwd: workspaceRoot
-    });
-
-    if (stderr) {
-      console.error('beadsService: stderr:', stderr);
-    }
-
-    console.log('beadsService: stdout:', stdout);
-
-    const result = JSON.parse(stdout);
-
-    // bd list --json returns an object with an "issues" array
-    if (result && Array.isArray(result.issues)) {
-      return result.issues;
-    }
-
-    // Fallback if it's already an array
-    if (Array.isArray(result)) {
-      return result;
-    }
-
-    return [];
-  } catch (error) {
-    console.error('beadsService: Failed to list beads issues:', error);
-    return [];
-  }
-}
-
 export async function listReadyIssues(workspaceRoot: string): Promise<BeadsIssue[]> {
   try {
     const { stdout, stderr } = await execAsync('bd ready --json', {

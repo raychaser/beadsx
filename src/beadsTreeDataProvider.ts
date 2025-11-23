@@ -114,10 +114,10 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     // Load issues if cache is empty
     if (this.issuesCache.length === 0) {
       if (!this.loadingPromise) {
-        this.loadingPromise = listFilteredIssues(this.workspaceRoot, this.filterMode);
+        this.loadingPromise = listFilteredIssues(this.workspaceRoot, this.filterMode)
+          .finally(() => { this.loadingPromise = null; });
       }
       this.issuesCache = await this.loadingPromise;
-      this.loadingPromise = null;
     }
 
     if (element) {
