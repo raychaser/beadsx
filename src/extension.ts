@@ -11,19 +11,19 @@ export function activate(context: vscode.ExtensionContext) {
   setOutputChannel(outputChannel);
   const beadsProvider = new BeadsTreeDataProvider(context, outputChannel);
 
-  const treeView = vscode.window.createTreeView('beadsIssues', {
+  const treeView = vscode.window.createTreeView('beadsxIssues', {
     treeDataProvider: beadsProvider,
     showCollapseAll: true
   });
 
   // Set initial filter in title
-  treeView.title = `Beads - ${beadsProvider.getFilterDisplayName()}`;
+  treeView.title = beadsProvider.getFilterDisplayName();
 
-  const refreshCommand = vscode.commands.registerCommand('beads.refresh', () => {
+  const refreshCommand = vscode.commands.registerCommand('beadsx.refresh', () => {
     beadsProvider.refresh();
   });
 
-  const filterCommand = vscode.commands.registerCommand('beads.filter', async () => {
+  const filterCommand = vscode.commands.registerCommand('beadsx.filter', async () => {
     const currentFilter = beadsProvider.getFilter();
     const options: { label: string; value: FilterMode; description?: string }[] = [
       {
@@ -56,7 +56,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     if (selected) {
       beadsProvider.setFilter(selected.value);
-      treeView.title = `Beads - ${beadsProvider.getFilterDisplayName()}`;
+      treeView.title = beadsProvider.getFilterDisplayName();
     }
   });
 
@@ -65,7 +65,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Listen for configuration changes
   const configChangeListener = vscode.workspace.onDidChangeConfiguration(e => {
-    if (e.affectsConfiguration('beads.autoReloadInterval')) {
+    if (e.affectsConfiguration('beadsx.autoReloadInterval')) {
       beadsProvider.startAutoReload();
     }
   });

@@ -19,7 +19,7 @@ function log(message: string): void {
 }
 
 function getBdCommand(): string {
-  const config = vscode.workspace.getConfiguration('beads');
+  const config = vscode.workspace.getConfiguration('beadsx');
   const customPath = config.get<string>('commandPath', '');
   return customPath || 'bd';
 }

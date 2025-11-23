@@ -16,28 +16,29 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "beads",
+          "id": "beadsx",
           "title": "Beads",
           "icon": "$(checklist)"
         }
       ]
     },
     "views": {
-      "beads": [
+      "beadsx": [
         {
-          "id": "beadsIssues",
-          "name": "Beads"
+          "id": "beadsxIssues",
+          "name": "Beads",
+          "icon": "$(checklist)"
         }
       ]
     },
     "commands": [
       {
-        "command": "beads.refresh",
+        "command": "beadsx.refresh",
         "title": "Refresh Issues",
         "icon": "$(refresh)"
       },
       {
-        "command": "beads.filter",
+        "command": "beadsx.filter",
         "title": "Filter Issues",
         "icon": "$(filter)"
       }
@@ -45,13 +46,13 @@
     "menus": {
       "view/title": [
         {
-          "command": "beads.filter",
-          "when": "view == beadsIssues",
+          "command": "beadsx.filter",
+          "when": "view == beadsxIssues",
           "group": "navigation"
         },
         {
-          "command": "beads.refresh",
-          "when": "view == beadsIssues",
+          "command": "beadsx.refresh",
+          "when": "view == beadsxIssues",
           "group": "navigation"
         }
       ]
@@ -59,13 +60,13 @@
     "configuration": {
       "title": "Beads Issue Tracker",
       "properties": {
-        "beads.autoReloadInterval": {
+        "beadsx.autoReloadInterval": {
           "type": "number",
           "default": 10,
           "minimum": 0,
           "description": "Interval in seconds to automatically reload issues (0 to disable)"
         },
-        "beads.commandPath": {
+        "beadsx.commandPath": {
           "type": "string",
           "default": "",
           "description": "Path to the bd command (leave empty to use PATH)"
@@ -79,7 +80,8 @@
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
     "package": "vsce package --allow-missing-repository",
-    "install-ext": "vsce package --allow-missing-repository && cursor --install-extension beadsx-*.vsix --force"
+    "install-ext": "vsce package --allow-missing-repository && code --install-extension beadsx-*.vsix --force",
+    "install-ext-cursor": "vsce package --allow-missing-repository && cursor --install-extension beadsx-*.vsix --force"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

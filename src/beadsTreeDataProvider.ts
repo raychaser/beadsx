@@ -26,7 +26,7 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
 
     // Restore saved filter mode
     if (context) {
-      const savedFilter = context.workspaceState.get<FilterMode>('beads.filterMode');
+      const savedFilter = context.workspaceState.get<FilterMode>('beadsx.filterMode');
       if (savedFilter) {
         this.filterMode = savedFilter;
       }
@@ -50,7 +50,7 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     this.filterMode = mode;
     // Save filter mode to workspace state
     if (this.context) {
-      this.context.workspaceState.update('beads.filterMode', mode);
+      this.context.workspaceState.update('beadsx.filterMode', mode);
     }
     this.refresh();
   }
@@ -70,7 +70,7 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
 
   startAutoReload(): void {
     this.stopAutoReload();
-    const config = vscode.workspace.getConfiguration('beads');
+    const config = vscode.workspace.getConfiguration('beadsx');
     const intervalSeconds = config.get<number>('autoReloadInterval', 10);
 
     this.log(`startAutoReload with interval: ${intervalSeconds}s`);
