@@ -116,7 +116,7 @@ export async function exportIssuesWithDeps(workspaceRoot: string): Promise<Beads
         }
         issues.push(issue);
       } catch (error) {
-        log(`Failed to parse line ${i}: ${line.substring(0, 100)} - ${error}`);
+        log(`Failed to parse line ${i}: ${error}`);
       }
     }
 
