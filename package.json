@@ -41,6 +41,10 @@
         "command": "beadsx.filter",
         "title": "Filter Issues",
         "icon": "$(filter)"
+      },
+      {
+        "command": "beadsx.showDetail",
+        "title": "Show Issue Detail"
       }
     ],
     "menus": {

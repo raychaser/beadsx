@@ -197,6 +197,13 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
 
     treeItem.iconPath = new vscode.ThemeIcon(iconName);
 
+    // Add command for click handling
+    treeItem.command = {
+      command: 'beadsx.showDetail',
+      title: 'Show Issue Detail',
+      arguments: [element]
+    };
+
     return treeItem;
   }
 
