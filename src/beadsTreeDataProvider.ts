@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { listFilteredIssues, BeadsIssue, FilterMode } from './beadsService';
+import { listFilteredIssues, BeadsIssue, FilterMode, testBdCommand } from './beadsService';
 
 export { BeadsIssue };
 
@@ -18,6 +18,15 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     this.workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
     this.context = context;
     this.outputChannel = outputChannel;
+
+    // Log workspace root for debugging
+    if (outputChannel) {
+      outputChannel.appendLine(`Workspace root: ${this.workspaceRoot || '(none)'}`);
+      // Test bd command
+      testBdCommand(this.workspaceRoot).then(result => {
+        outputChannel.appendLine(`bd test: ${result}`);
+      });
+    }
 
     // Restore saved filter mode
     if (context) {
@@ -52,6 +61,15 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
 
   getFilter(): FilterMode {
     return this.filterMode;
+  }
+
+  getFilterDisplayName(): string {
+    const names: Record<FilterMode, string> = {
+      'all': 'All Issues',
+      'open': 'Open Issues',
+      'ready': 'Ready Issues'
+    };
+    return names[this.filterMode];
   }
 
   startAutoReload(): void {
@@ -157,11 +175,12 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
           .then(issues => {
             const elapsed = Date.now() - startTime;
             this.log(`loaded ${issues.length} issues in ${elapsed}ms`);
+            this.issuesCache = issues;
             return issues;
           })
           .finally(() => { this.loadingPromise = null; });
       }
-      this.issuesCache = await this.loadingPromise;
+      await this.loadingPromise;
     }
 
     if (element) {
