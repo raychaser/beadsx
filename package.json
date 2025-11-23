@@ -3,7 +3,7 @@
   "displayName": "Beads Issue Tracker",
   "description": "VSCode panel for viewing beads issue tracking state",
   "version": "0.0.1",
-  "publisher": "beadsx",
+  "publisher": "raychaser",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -61,13 +61,15 @@
     "vscode:prepublish": "pnpm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "lint": "eslint src --ext ts"
+    "lint": "eslint src --ext ts",
+    "package": "vsce package --allow-missing-repository"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
     "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^6.13.0",
     "@typescript-eslint/parser": "^6.13.0",
+    "@vscode/vsce": "^3.7.0",
     "eslint": "^8.54.0",
     "typescript": "^5.3.2"
   }
