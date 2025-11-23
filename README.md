@@ -34,7 +34,7 @@ pnpm install-ext
 
 ```bash
 pnpm package
-cursor --install-extension beadsx-0.0.1.vsix --force
+cursor --install-extension beadsx-*.vsix --force
 ```
 
 ## Configuration

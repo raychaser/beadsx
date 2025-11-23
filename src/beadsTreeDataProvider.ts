@@ -65,6 +65,8 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
       this.reloadInterval = setInterval(() => {
         this.refresh();
       }, intervalSeconds * 1000);
+    } else {
+      this.log('Auto-reload disabled');
     }
   }
 
