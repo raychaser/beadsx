@@ -12,10 +12,12 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
   private context: vscode.ExtensionContext | undefined;
   private loadingPromise: Promise<BeadsIssue[]> | null = null;
   private reloadInterval: NodeJS.Timeout | undefined;
+  private outputChannel: vscode.OutputChannel | undefined;
 
-  constructor(context?: vscode.ExtensionContext) {
+  constructor(context?: vscode.ExtensionContext, outputChannel?: vscode.OutputChannel) {
     this.workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
     this.context = context;
+    this.outputChannel = outputChannel;
 
     // Restore saved filter mode
     if (context) {
@@ -26,7 +28,15 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     }
   }
 
+  private log(message: string): void {
+    if (this.outputChannel) {
+      const timestamp = new Date().toISOString();
+      this.outputChannel.appendLine(`[${timestamp}] ${message}`);
+    }
+  }
+
   refresh(): void {
+    this.log('refresh called');
     this.issuesCache = []; // Clear cache on refresh
     this._onDidChangeTreeData.fire();
   }
@@ -48,6 +58,8 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     this.stopAutoReload();
     const config = vscode.workspace.getConfiguration('beads');
     const intervalSeconds = config.get<number>('autoReloadInterval', 10);
+
+    this.log(`startAutoReload with interval: ${intervalSeconds}s`);
 
     if (intervalSeconds > 0) {
       this.reloadInterval = setInterval(() => {
