@@ -36,7 +36,7 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
   }
 
   refresh(): void {
-    this.log('refresh called');
+    this.log('refresh started');
     this.issuesCache = []; // Clear cache on refresh
     this._onDidChangeTreeData.fire();
   }
@@ -152,7 +152,13 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     // Load issues if cache is empty
     if (this.issuesCache.length === 0) {
       if (!this.loadingPromise) {
+        const startTime = Date.now();
         this.loadingPromise = listFilteredIssues(this.workspaceRoot, this.filterMode)
+          .then(issues => {
+            const elapsed = Date.now() - startTime;
+            this.log(`loaded ${issues.length} issues in ${elapsed}ms`);
+            return issues;
+          })
           .finally(() => { this.loadingPromise = null; });
       }
       this.issuesCache = await this.loadingPromise;
