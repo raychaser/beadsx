@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Package extension
+        run: pnpm run package
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: beadsx-*.vsix
+          generate_release_notes: true
+          body: |
+            ## Installation
+
+            Download the `.vsix` file and install it in VSCode:
+
+            ```bash
+            code --install-extension beadsx-${{ steps.version.outputs.VERSION }}.vsix
+            ```
+
+            Or in Cursor:
+
+            ```bash
+            cursor --install-extension beadsx-${{ steps.version.outputs.VERSION }}.vsix
+            ```
