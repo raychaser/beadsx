@@ -2,8 +2,12 @@ import * as vscode from 'vscode';
 import { BeadsTreeDataProvider } from './beadsTreeDataProvider';
 import { FilterMode } from './beadsService';
 
+// Create output channel for logging
+const outputChannel = vscode.window.createOutputChannel('Beads Issue Tracker');
+
 export function activate(context: vscode.ExtensionContext) {
-  const beadsProvider = new BeadsTreeDataProvider(context);
+  outputChannel.appendLine('Beads extension activating...');
+  const beadsProvider = new BeadsTreeDataProvider(context, outputChannel);
 
   const treeView = vscode.window.createTreeView('beadsIssues', {
     treeDataProvider: beadsProvider,
@@ -32,7 +36,19 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  context.subscriptions.push(treeView, refreshCommand, filterCommand);
+  // Start auto-reload
+  beadsProvider.startAutoReload();
+
+  // Listen for configuration changes
+  const configChangeListener = vscode.workspace.onDidChangeConfiguration(e => {
+    if (e.affectsConfiguration('beads.autoReloadInterval')) {
+      beadsProvider.startAutoReload();
+    }
+  });
+
+  context.subscriptions.push(treeView, refreshCommand, filterCommand, configChangeListener, {
+    dispose: () => beadsProvider.dispose()
+  });
 }
 
 export function deactivate() {}

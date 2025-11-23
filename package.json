@@ -55,6 +55,17 @@
           "group": "navigation"
         }
       ]
+    },
+    "configuration": {
+      "title": "Beads Issue Tracker",
+      "properties": {
+        "beads.autoReloadInterval": {
+          "type": "number",
+          "default": 10,
+          "minimum": 0,
+          "description": "Interval in seconds to automatically reload issues (0 to disable)"
+        }
+      }
     }
   },
   "scripts": {
@@ -62,7 +73,8 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
-    "package": "vsce package --allow-missing-repository"
+    "package": "vsce package --allow-missing-repository",
+    "install-ext": "vsce package --allow-missing-repository && cursor --install-extension beadsx-*.vsix --force"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
