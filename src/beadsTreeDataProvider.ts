@@ -10,6 +10,7 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
   private filterMode: FilterMode = 'all';
   private issuesCache: BeadsIssue[] = [];
   private context: vscode.ExtensionContext | undefined;
+  private loadingPromise: Promise<BeadsIssue[]> | null = null;
 
   constructor(context?: vscode.ExtensionContext) {
     this.workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
@@ -112,7 +113,11 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
 
     // Load issues if cache is empty
     if (this.issuesCache.length === 0) {
-      this.issuesCache = await listFilteredIssues(this.workspaceRoot, this.filterMode);
+      if (!this.loadingPromise) {
+        this.loadingPromise = listFilteredIssues(this.workspaceRoot, this.filterMode);
+      }
+      this.issuesCache = await this.loadingPromise;
+      this.loadingPromise = null;
     }
 
     if (element) {

@@ -100,19 +100,26 @@ export async function exportIssuesWithDeps(workspaceRoot: string): Promise<Beads
 
     // bd export returns JSONL (one JSON object per line)
     const lines = stdout.trim().split('\n').filter(line => line.trim());
-    const issues: BeadsIssue[] = lines.map(line => {
-      const issue = JSON.parse(line);
-      // Compute parentId from parent-child dependencies
-      if (issue.dependencies) {
-        const parentDep = issue.dependencies.find(
-          (dep: BeadsDependency) => dep.type === 'parent-child'
-        );
-        if (parentDep) {
-          issue.parentId = parentDep.depends_on_id;
+    const issues: BeadsIssue[] = lines
+      .map(line => {
+        try {
+          const issue = JSON.parse(line);
+          // Compute parentId from parent-child dependencies
+          if (issue.dependencies) {
+            const parentDep = issue.dependencies.find(
+              (dep: BeadsDependency) => dep.type === 'parent-child'
+            );
+            if (parentDep) {
+              issue.parentId = parentDep.depends_on_id;
+            }
+          }
+          return issue;
+        } catch (error) {
+          console.error('beadsService: Failed to parse issue line:', line, error);
+          return null;
         }
-      }
-      return issue;
-    });
+      })
+      .filter((issue): issue is BeadsIssue => issue !== null);
 
     return issues;
   } catch (error) {
