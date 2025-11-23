@@ -1,4 +1,5 @@
 {
 	"workbench.preferredDarkColorTheme": "Default Dark Modern",
-	"workbench.colorTheme": "Bearded Theme Solarized Light"
+	"workbench.colorTheme": "Bearded Theme Solarized Light",
+	"beads.autoReloadInterval": 4
 }

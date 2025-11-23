@@ -26,7 +26,7 @@
       "beads": [
         {
           "id": "beadsIssues",
-          "name": "Issues"
+          "name": "Beads"
         }
       ]
     },
@@ -64,6 +64,11 @@
           "default": 10,
           "minimum": 0,
           "description": "Interval in seconds to automatically reload issues (0 to disable)"
+        },
+        "beads.commandPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the bd command (leave empty to use PATH)"
         }
       }
     }
