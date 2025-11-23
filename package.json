@@ -55,6 +55,17 @@
           "group": "navigation"
         }
       ]
+    },
+    "configuration": {
+      "title": "Beads Issue Tracker",
+      "properties": {
+        "beads.autoReloadInterval": {
+          "type": "number",
+          "default": 10,
+          "minimum": 0,
+          "description": "Interval in seconds to automatically reload issues (0 to disable)"
+        }
+      }
     }
   },
   "scripts": {

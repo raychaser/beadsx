@@ -32,7 +32,19 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  context.subscriptions.push(treeView, refreshCommand, filterCommand);
+  // Start auto-reload
+  beadsProvider.startAutoReload();
+
+  // Listen for configuration changes
+  const configChangeListener = vscode.workspace.onDidChangeConfiguration(e => {
+    if (e.affectsConfiguration('beads.autoReloadInterval')) {
+      beadsProvider.startAutoReload();
+    }
+  });
+
+  context.subscriptions.push(treeView, refreshCommand, filterCommand, configChangeListener, {
+    dispose: () => beadsProvider.dispose()
+  });
 }
 
 export function deactivate() {}
