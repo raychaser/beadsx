@@ -75,6 +75,11 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically expand open/in-progress issues to show children"
+        },
+        "beadsx.shortIds": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show shortened issue IDs without prefix (e.g., '123' instead of 'beadsx-123')"
         }
       }
     }
