@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { listFilteredIssues, BeadsIssue, FilterMode, testBdCommand } from './beadsService';
+import { listFilteredIssues, BeadsIssue, FilterMode } from './beadsService';
 
 export { BeadsIssue };
 
@@ -22,10 +22,6 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     // Log workspace root for debugging
     if (outputChannel) {
       outputChannel.appendLine(`Workspace root: ${this.workspaceRoot || '(none)'}`);
-      // Test bd command
-      testBdCommand(this.workspaceRoot).then(result => {
-        outputChannel.appendLine(`bd test: ${result}`);
-      });
     }
 
     // Restore saved filter mode

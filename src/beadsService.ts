@@ -1,8 +1,8 @@
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as vscode from 'vscode';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 // Module-level output channel reference for logging
 let outputChannel: vscode.OutputChannel | undefined;
@@ -50,7 +50,7 @@ export interface BeadsIssue {
 export async function listReadyIssues(workspaceRoot: string): Promise<BeadsIssue[]> {
   try {
     const bdCmd = getBdCommand();
-    const { stdout, stderr } = await execAsync(`${bdCmd} ready --json`, {
+    const { stdout, stderr } = await execFileAsync(bdCmd, ['ready', '--json'], {
       cwd: workspaceRoot
     });
 
@@ -81,7 +81,7 @@ export async function exportIssuesWithDeps(workspaceRoot: string): Promise<Beads
   try {
     const bdCmd = getBdCommand();
     log(`exportIssuesWithDeps called with workspaceRoot: ${workspaceRoot}, bdCmd: ${bdCmd}`);
-    const { stdout, stderr } = await execAsync(`${bdCmd} export`, {
+    const { stdout, stderr } = await execFileAsync(bdCmd, ['export'], {
       cwd: workspaceRoot
     });
 
@@ -129,18 +129,6 @@ export async function exportIssuesWithDeps(workspaceRoot: string): Promise<Beads
   }
 }
 
-// Export function to get error info
-export async function testBdCommand(workspaceRoot: string): Promise<string> {
-  try {
-    const bdCmd = getBdCommand();
-    const { stdout, stderr } = await execAsync(`${bdCmd} export`, {
-      cwd: workspaceRoot
-    });
-    return `stdout length: ${stdout.length}, stderr: ${stderr || 'none'}, lines: ${stdout.trim().split('\n').length}`;
-  } catch (error) {
-    return `ERROR: ${error}`;
-  }
-}
 
 export async function listFilteredIssues(workspaceRoot: string, filter: FilterMode): Promise<BeadsIssue[]> {
   log(`listFilteredIssues called with filter: ${filter}`);
