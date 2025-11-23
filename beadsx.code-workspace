@@ -3,5 +3,12 @@
     {
       "path": "."
     }
-  ]
+  ],
+  "settings": {
+    "workbench.iconTheme": "vs-seti",
+    "workbench.preferredLightColorTheme": "Solarized Dark",
+    "workbench.colorTheme": "Solarized Light+",
+    "beadsx.autoReloadInterval": 4,
+    "beadsx.shortIds": true
+  }
 }
