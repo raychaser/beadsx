@@ -19,6 +19,27 @@ export function activate(context: vscode.ExtensionContext) {
   // Set initial filter in title
   treeView.title = beadsProvider.getFilterDisplayName();
 
+  // Auto-expand open issues after data is loaded
+  const autoExpandIssues = async () => {
+    // Longer delay to ensure tree is fully rendered
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const expandable = beadsProvider.getExpandableIssues();
+    outputChannel.appendLine(`Auto-expanding ${expandable.length} issues`);
+    for (const issue of expandable) {
+      try {
+        outputChannel.appendLine(`Revealing ${issue.id}`);
+        await treeView.reveal(issue, { expand: true, select: false, focus: false });
+      } catch (e) {
+        outputChannel.appendLine(`Failed to reveal ${issue.id}: ${e}`);
+      }
+    }
+  };
+
+  // Listen for data load completion to auto-expand
+  const dataLoadListener = beadsProvider.onDidLoadData(() => {
+    autoExpandIssues();
+  });
+
   const refreshCommand = vscode.commands.registerCommand('beadsx.refresh', () => {
     beadsProvider.refresh();
   });
@@ -70,7 +91,7 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  context.subscriptions.push(treeView, refreshCommand, filterCommand, configChangeListener, {
+  context.subscriptions.push(treeView, refreshCommand, filterCommand, configChangeListener, dataLoadListener, {
     dispose: () => beadsProvider.dispose()
   });
 }

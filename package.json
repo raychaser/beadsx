@@ -70,6 +70,11 @@
           "type": "string",
           "default": "",
           "description": "Path to the bd command (leave empty to use PATH)"
+        },
+        "beadsx.autoExpandOpen": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically expand open/in-progress issues to show children"
         }
       }
     }

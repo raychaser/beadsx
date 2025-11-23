@@ -6,6 +6,8 @@ export { BeadsIssue };
 export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue> {
   private _onDidChangeTreeData: vscode.EventEmitter<BeadsIssue | undefined | null | void> = new vscode.EventEmitter<BeadsIssue | undefined | null | void>();
   readonly onDidChangeTreeData: vscode.Event<BeadsIssue | undefined | null | void> = this._onDidChangeTreeData.event;
+  private _onDidLoadData: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
+  readonly onDidLoadData: vscode.Event<void> = this._onDidLoadData.event;
   private workspaceRoot: string;
   private filterMode: FilterMode = 'all';
   private issuesCache: BeadsIssue[] = [];
@@ -68,6 +70,23 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     return names[this.filterMode];
   }
 
+  // Get issues that should be auto-expanded (open/in_progress with children)
+  getExpandableIssues(): BeadsIssue[] {
+    const config = vscode.workspace.getConfiguration('beadsx');
+    const autoExpand = config.get<boolean>('autoExpandOpen', true);
+
+    if (!autoExpand) {
+      return [];
+    }
+
+    // Find issues that are open/in_progress and have children
+    return this.issuesCache.filter(issue => {
+      const isOpen = issue.status !== 'closed';
+      const hasChildren = this.issuesCache.some(child => child.parentId === issue.id);
+      return isOpen && hasChildren;
+    });
+  }
+
   startAutoReload(): void {
     this.stopAutoReload();
     const config = vscode.workspace.getConfiguration('beadsx');
@@ -102,12 +121,24 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
   getTreeItem(element: BeadsIssue): vscode.TreeItem {
     // Determine if this issue has children
     const hasChildIssues = this.hasChildren(element.id);
-    // Start expanded if issue is open/in_progress, collapsed if closed
-    const collapsibleState = hasChildIssues
-      ? (element.status === 'closed'
-          ? vscode.TreeItemCollapsibleState.Collapsed
-          : vscode.TreeItemCollapsibleState.Expanded)
-      : vscode.TreeItemCollapsibleState.None;
+
+    // Check config for auto-expand setting
+    const config = vscode.workspace.getConfiguration('beadsx');
+    const autoExpand = config.get<boolean>('autoExpandOpen', true);
+
+    // Start expanded if issue is open/in_progress and autoExpand is enabled, collapsed if closed
+    let collapsibleState = vscode.TreeItemCollapsibleState.None;
+    if (hasChildIssues) {
+      if (element.status === 'closed') {
+        collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
+      } else if (autoExpand) {
+        collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
+      } else {
+        collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
+      }
+    }
+
+    this.log(`getTreeItem ${element.id}: hasChildren=${hasChildIssues}, autoExpand=${autoExpand}, state=${collapsibleState === vscode.TreeItemCollapsibleState.Expanded ? 'Expanded' : collapsibleState === vscode.TreeItemCollapsibleState.Collapsed ? 'Collapsed' : 'None'}`);
 
     // Status symbol
     let statusSymbol: string;
@@ -129,7 +160,7 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     // Label shows status and ID, description shows title
     const treeItem = new vscode.TreeItem(`${statusSymbol} ${element.id}`, collapsibleState);
 
-    treeItem.id = element.id;
+    // Don't set treeItem.id to allow collapsible state to be re-evaluated on each refresh
     treeItem.description = element.title;
     treeItem.tooltip = `${element.title}\nType: ${element.issue_type}\nPriority: ${element.priority}\nStatus: ${element.status}`;
 
@@ -172,6 +203,8 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
             const elapsed = Date.now() - startTime;
             this.log(`loaded ${issues.length} issues in ${elapsed}ms`);
             this.issuesCache = issues;
+            // Fire event after data is loaded
+            this._onDidLoadData.fire();
             return issues;
           })
           .finally(() => { this.loadingPromise = null; });
@@ -186,5 +219,12 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
 
     // Return root issues (issues with no parent)
     return this.issuesCache.filter(issue => !issue.parentId);
+  }
+
+  getParent(element: BeadsIssue): BeadsIssue | undefined {
+    if (!element.parentId) {
+      return undefined;
+    }
+    return this.issuesCache.find(issue => issue.id === element.parentId);
   }
 }
