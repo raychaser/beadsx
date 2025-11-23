@@ -157,8 +157,19 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
         break;
     }
 
+    // Check if short IDs are enabled
+    const shortIds = config.get<boolean>('shortIds', false);
+    let displayId = element.id;
+    if (shortIds) {
+      // Extract just the numeric/alphanumeric part after the last hyphen
+      const lastHyphen = element.id.lastIndexOf('-');
+      if (lastHyphen !== -1) {
+        displayId = element.id.substring(lastHyphen + 1);
+      }
+    }
+
     // Label shows status and ID, description shows title
-    const treeItem = new vscode.TreeItem(`${statusSymbol} ${element.id}`, collapsibleState);
+    const treeItem = new vscode.TreeItem(`${statusSymbol} ${displayId}`, collapsibleState);
 
     // Don't set treeItem.id to allow collapsible state to be re-evaluated on each refresh
     treeItem.description = element.title;
