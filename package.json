@@ -2,7 +2,7 @@
   "name": "beadsx",
   "displayName": "Beads Issue Tracker",
   "description": "VSCode panel for viewing beads issue tracking state",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "raychaser",
   "repository": {
     "type": "git",
