@@ -181,7 +181,7 @@ function getDetailHtml(issue: BeadsIssue): string {
 }
 
 // Create output channel for logging
-const outputChannel = vscode.window.createOutputChannel('Beads Issue Tracker');
+const outputChannel = vscode.window.createOutputChannel('BeadsX Extension');
 
 export function activate(context: vscode.ExtensionContext) {
   outputChannel.appendLine('Beads extension activating...');
