@@ -1,4 +1,4 @@
-# Beads Issue Tracker - VSCode Extension
+# BeadsX Extension
 
 A VSCode/Cursor extension that provides a panel for viewing and managing beads issue tracking state.
 
@@ -39,7 +39,7 @@ cursor --install-extension beadsx-*.vsix --force
 
 ## Configuration
 
-Access settings via: Settings → Extensions → Beads Issue Tracker
+Access settings via: Settings → Extensions → BeadsX Extension
 
 | Setting | Default | Description |
 |---------|---------|-------------|
