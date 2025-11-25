@@ -4,10 +4,26 @@ import fs from 'node:fs';
 import { execSync } from 'node:child_process';
 import { downloadAndUnzipVSCode } from '@vscode/test-electron';
 import { _electron as electron, test, expect } from '@playwright/test';
-import type { ElectronApplication, Page } from '@playwright/test';
+import type { ElectronApplication, Page, Locator } from '@playwright/test';
+
+// ============================================
+// Test Data Types
+// ============================================
+
+interface TestIssue {
+  id: string;
+  title: string;
+  type: 'epic' | 'bug' | 'task';
+  description?: string;
+}
+
+// ============================================
+// Shared State
+// ============================================
 
 let electronApp: ElectronApplication;
 let page: Page;
+let testIssues: { epic: TestIssue; bug: TestIssue; task: TestIssue };
 
 // Get the project root directory
 const projectRoot = path.resolve(process.cwd());
@@ -23,21 +39,146 @@ const extensionsDir = path.join(tmpDir, 'extensions');
 // VSCode needs these arguments to run properly (from @vscode/test-electron)
 const args = [
   workspacePath,
-  // https://github.com/microsoft/vscode/issues/84238
   '--no-sandbox',
-  // https://github.com/microsoft/vscode-test/issues/221
   '--disable-gpu-sandbox',
-  // https://github.com/microsoft/vscode-test/issues/120
   '--disable-updates',
   '--skip-welcome',
   '--skip-release-notes',
   '--disable-workspace-trust',
-  // Extension development
   `--extensionDevelopmentPath=${extensionPath}`,
-  // Use temp directories to avoid conflicts
   `--user-data-dir=${userDataDir}`,
   `--extensions-dir=${extensionsDir}`,
 ];
+
+// ============================================
+// Helper Functions - Issue Creation
+// ============================================
+
+/**
+ * Creates a beads issue and captures the returned ID
+ */
+function createIssueAndCaptureId(
+  cwd: string,
+  opts: { title: string; type: string; description?: string }
+): string {
+  let cmd = `bd create --title "${opts.title}" --type ${opts.type}`;
+  if (opts.description) {
+    cmd += ` --description "${opts.description}"`;
+  }
+
+  const output = execSync(cmd, { cwd, encoding: 'utf8' });
+  const match = output.match(/Created issue: ([\w-]+)/);
+  if (!match) {
+    throw new Error(`Failed to parse issue ID from: ${output}`);
+  }
+  return match[1];
+}
+
+// ============================================
+// Helper Functions - Selectors (Scoped to BeadsX)
+// ============================================
+
+/**
+ * Get tree items ONLY within BeadsX panel (not explorer, search, etc.)
+ */
+function getBeadsXTreeItems(p: Page): Locator {
+  return p.locator('[id="workbench.view.extension.beadsx"] [role="treeitem"]');
+}
+
+/**
+ * Get BeadsX activity bar button
+ */
+function getBeadsXActivityBar(p: Page): Locator {
+  return p.locator('[id="workbench.parts.activitybar"] a.action-label[aria-label="Beads"]');
+}
+
+/**
+ * Get a specific issue by its title text
+ */
+function getIssueByTitle(p: Page, title: string): Locator {
+  return getBeadsXTreeItems(p).filter({ hasText: title });
+}
+
+/**
+ * Get a specific issue by its ID
+ */
+function getIssueById(p: Page, id: string): Locator {
+  return getBeadsXTreeItems(p).filter({ hasText: id });
+}
+
+/**
+ * Get the detail panel tab
+ */
+function getDetailPanelTab(p: Page): Locator {
+  return p.locator('.tabs-container .tab').filter({ hasText: 'Issue:' });
+}
+
+// ============================================
+// Helper Functions - Actions
+// ============================================
+
+/**
+ * Open the BeadsX panel by clicking the activity bar icon
+ */
+async function openBeadsXPanel(p: Page): Promise<void> {
+  const button = getBeadsXActivityBar(p);
+  await button.click();
+  // Wait for tree items to be visible
+  await getBeadsXTreeItems(p).first().waitFor({ state: 'visible', timeout: 15000 });
+}
+
+/**
+ * Open issue detail panel by double-clicking
+ */
+async function openIssueDetail(p: Page, issueLocator: Locator): Promise<void> {
+  await issueLocator.dblclick();
+  await getDetailPanelTab(p).waitFor({ state: 'visible', timeout: 5000 });
+}
+
+/**
+ * Execute command via Command Palette and wait for it to complete
+ */
+async function executeCommand(p: Page, commandName: string): Promise<void> {
+  const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+  await p.keyboard.press(`${modifier}+Shift+P`);
+  // Wait for command palette to open
+  await p.locator('.quick-input-widget').waitFor({ state: 'visible', timeout: 5000 });
+  await p.keyboard.type(commandName);
+  await p.waitForTimeout(300); // Let search complete
+  await p.keyboard.press('Enter');
+  // For commands that show a quick pick, wait for the NEW quick pick
+  // The command palette closes and a new one opens
+  await p.waitForTimeout(500);
+}
+
+/**
+ * Execute BeadsX Filter command and wait for filter quick pick
+ */
+async function executeFilterCommand(p: Page): Promise<void> {
+  const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+  await p.keyboard.press(`${modifier}+Shift+P`);
+  await p.locator('.quick-input-widget').waitFor({ state: 'visible', timeout: 5000 });
+  await p.keyboard.type('Filter Issues');
+  await p.waitForTimeout(500);
+  await p.keyboard.press('Enter');
+
+  // Wait for the filter quick pick to appear with options
+  await p.waitForTimeout(500);
+  await p.locator('.quick-input-list-row').filter({ hasText: 'All Issues' }).waitFor({ state: 'visible', timeout: 5000 });
+}
+
+/**
+ * Refresh BeadsX panel via command and wait for data to reload
+ */
+async function refreshBeadsXPanel(p: Page): Promise<void> {
+  await executeCommand(p, 'BeadsX: Refresh Issues');
+  // Wait for tree to refresh - the command triggers a reload
+  await p.waitForTimeout(3000);
+}
+
+// ============================================
+// Test Setup and Teardown
+// ============================================
 
 test.beforeAll(async () => {
   // Create temp directories
@@ -46,92 +187,63 @@ test.beforeAll(async () => {
   fs.mkdirSync(extensionsDir, { recursive: true });
   console.log('Created temp dirs:', { workspacePath, userDataDir, extensionsDir });
 
-  // Initialize beads database with known test issues
+  // Initialize beads database with known test issues and capture IDs
   try {
-    // First initialize the beads database with prefix "test"
     execSync('bd init -p test -q', { cwd: workspacePath, stdio: 'pipe' });
-    // Then create test issues
-    execSync('bd create --title "Test Epic" --type epic', { cwd: workspacePath, stdio: 'pipe' });
-    execSync('bd create --title "Test Bug" --type bug', { cwd: workspacePath, stdio: 'pipe' });
-    execSync('bd create --title "Test Task" --type task', { cwd: workspacePath, stdio: 'pipe' });
-    console.log('Initialized beads database with 3 test issues');
+
+    testIssues = {
+      epic: {
+        id: createIssueAndCaptureId(workspacePath, {
+          title: 'Test Epic',
+          type: 'epic',
+          description: 'This is the epic description for testing',
+        }),
+        title: 'Test Epic',
+        type: 'epic',
+        description: 'This is the epic description for testing',
+      },
+      bug: {
+        id: createIssueAndCaptureId(workspacePath, {
+          title: 'Test Bug',
+          type: 'bug',
+        }),
+        title: 'Test Bug',
+        type: 'bug',
+      },
+      task: {
+        id: createIssueAndCaptureId(workspacePath, {
+          title: 'Test Task',
+          type: 'task',
+        }),
+        title: 'Test Task',
+        type: 'task',
+      },
+    };
+
+    console.log('Created test issues:', JSON.stringify(testIssues, null, 2));
   } catch (e) {
     console.log('Failed to initialize beads (bd may not be available):', e);
+    throw e;
   }
 
   const vscodeExecutablePath = await downloadAndUnzipVSCode('stable');
   console.log('VSCode executable path:', vscodeExecutablePath);
 
-  // The vscodeExecutablePath should already point to the correct binary
-  // On macOS it returns path to Electron binary
-  const executablePath = vscodeExecutablePath;
-  console.log('Electron executable path:', executablePath);
-  console.log('Args:', args);
+  electronApp = await electron.launch({
+    executablePath: vscodeExecutablePath,
+    args,
+    timeout: 60000,
+  });
+  console.log('Electron app launched');
 
-  try {
-    electronApp = await electron.launch({
-      executablePath,
-      args,
-      timeout: 60000,
-    });
-    console.log('Electron app launched');
+  // Use Playwright's firstWindow() instead of manual polling
+  page = await electronApp.firstWindow({ timeout: 30000 });
+  console.log('Got first window');
 
-    // Listen for console output from VSCode
-    electronApp.on('console', (msg) => {
-      console.log('[VSCode console]', msg.text());
-    });
-
-    // Listen for window events
-    electronApp.on('window', (window) => {
-      console.log('Window opened!');
-    });
-
-    // Poll for windows/pages to appear (VSCode takes time to create window)
-    let pages: Page[] = [];
-    let attempts = 0;
-    const maxAttempts = 30; // 30 seconds total
-
-    while (pages.length === 0 && attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // Try multiple methods to detect windows
-      const windows = electronApp.windows();
-      const contextPages = electronApp.context().pages();
-
-      // Check if process is still alive
-      let isRunning = false;
-      try {
-        isRunning = await electronApp.evaluate(() => true);
-      } catch {
-        console.log('  - Process not responding');
-      }
-
-      console.log(`Attempt ${attempts + 1}:`);
-      console.log('  - electronApp.windows():', windows.length);
-      console.log('  - context().pages():', contextPages.length);
-      console.log('  - Process alive:', isRunning);
-
-      // Use whichever has pages
-      pages = contextPages.length > 0 ? contextPages : windows;
-      attempts++;
-    }
-
-    if (pages.length > 0) {
-      page = pages[0];
-      console.log('Found page after', attempts, 'seconds');
-      console.log('Page URL:', page.url());
-    } else {
-      throw new Error('No VSCode window appeared after 30 seconds');
-    }
-
-    // Wait for VSCode to fully load
-    await page.waitForTimeout(5000);
-    console.log('VSCode loaded');
-  } catch (error) {
-    console.error('Failed to launch:', error);
-    console.error('Windows at error:', electronApp?.windows().length);
-    throw error;
-  }
+  // Wait for VSCode to fully load (semantic wait)
+  await page.locator('[id="workbench.parts.statusbar"]').waitFor({ state: 'visible', timeout: 30000 });
+  await page.waitForFunction(() => document.title.includes('Extension Development Host'), { timeout: 30000 });
+  console.log('VSCode loaded');
 });
 
 test.afterAll(async () => {
@@ -147,82 +259,211 @@ test.afterAll(async () => {
   }
 });
 
+// ============================================
+// All Tests in Single describe Block
+// ============================================
+
 test.describe('BeadsX Extension', () => {
+  // Open panel once and keep it open
+  test.beforeAll(async () => {
+    await openBeadsXPanel(page);
+  });
+
+  // Core tests
   test('VSCode launches successfully', async () => {
     const title = await page.title();
-    // In extension development mode, title is "[Extension Development Host] <workspace>"
     expect(title).toContain('Extension Development Host');
   });
 
   test('Activity bar has Beads icon', async () => {
-    // Look for the Beads activity bar item
-    const activityBar = page.locator('[id="workbench.parts.activitybar"]');
-    await expect(activityBar).toBeVisible();
+    const button = getBeadsXActivityBar(page);
+    await expect(button).toBeVisible();
   });
 
-  test('Beads panel shows issues from demo project', async () => {
-    // Click on the Beads icon in activity bar to open the panel
-    // The beadsx view container should be visible
-    const beadsContainer = page.locator('[id="workbench.view.extension.beadsx"]');
-
-    // Wait for extension to activate and load issues
-    await page.waitForTimeout(3000);
-
-    // Check if tree view is rendered
-    const treeView = page.locator('.monaco-list');
-    await expect(treeView.first()).toBeVisible({ timeout: 10000 });
+  // Tree View Data tests
+  test('Tree: displays exactly 3 test issues', async () => {
+    const treeItems = getBeadsXTreeItems(page);
+    await expect(treeItems).toHaveCount(3);
   });
 
-  test('Double-click on issue opens detail panel', async () => {
-    // Wait for extension to be ready
-    await page.waitForTimeout(2000);
+  test('Tree: displays known issue IDs', async () => {
+    await expect(getIssueById(page, testIssues.epic.id)).toBeVisible();
+    await expect(getIssueById(page, testIssues.bug.id)).toBeVisible();
+    await expect(getIssueById(page, testIssues.task.id)).toBeVisible();
+  });
 
-    // Click on the BeadsX icon in the activity bar to open the issues panel
-    const beadsxView = page.locator('[id="workbench.parts.activitybar"] a.action-label[aria-label="Beads"]');
-    await beadsxView.click();
-    console.log('Clicked BeadsX activity bar item');
+  test('Tree: displays correct issue titles', async () => {
+    await expect(getIssueByTitle(page, 'Test Epic')).toBeVisible();
+    await expect(getIssueByTitle(page, 'Test Bug')).toBeVisible();
+    await expect(getIssueByTitle(page, 'Test Task')).toBeVisible();
+  });
 
-    // Wait for the panel to open and issues to load
-    await page.waitForTimeout(3000);
+  test('Tree: shows open status symbol [O] for all issues', async () => {
+    const treeItems = getBeadsXTreeItems(page);
+    const count = await treeItems.count();
 
-    // Find tree items - could be in BeadsX panel or any visible tree
-    // The extension may find issues from parent directory's beads
-    const treeItems = page.locator('[role="treeitem"]');
-
-    // Poll for tree items to appear (extension needs time to load issues)
-    let treeItemCount = 0;
-    for (let i = 0; i < 10; i++) {
-      treeItemCount = await treeItems.count();
-      console.log(`Attempt ${i + 1}: Tree items count: ${treeItemCount}`);
-      if (treeItemCount > 0) break;
-      await page.waitForTimeout(1000);
+    for (let i = 0; i < count; i++) {
+      const text = await treeItems.nth(i).textContent();
+      expect(text).toContain('[O]');
     }
+  });
 
-    // Skip test if no issues found (beads not available in test environment)
-    if (treeItemCount === 0) {
-      console.log('No tree items found - skipping double-click test (beads not available)');
-      return;
-    }
+  // Detail Panel tests
+  test('Detail: double-click opens detail panel with correct ID', async () => {
+    const epicIssue = getIssueById(page, testIssues.epic.id);
+    await openIssueDetail(page, epicIssue);
 
-    // Double-click on the first issue (two clicks with short delay)
-    await treeItems.first().click();
-    await page.waitForTimeout(100);
-    await treeItems.first().click();
+    // Verify tab exists and contains the issue ID
+    const detailTab = getDetailPanelTab(page);
+    await expect(detailTab).toBeVisible();
+    await expect(detailTab).toContainText(testIssues.epic.id);
+  });
 
-    // Wait for the detail webview panel to appear
-    await page.waitForTimeout(2000);
+  test('Detail: can open different issue types', async () => {
+    // Close any existing detail tabs by pressing Cmd+W
+    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+    await page.keyboard.press(`${modifier}+W`);
+    await page.waitForTimeout(500);
 
-    // Check for the webview panel - it creates an editor tab with "Issue:" prefix
-    const tabs = page.locator('.tabs-container .tab');
-    const tabCount = await tabs.count();
-    console.log('Tabs count:', tabCount);
+    // Open bug issue detail
+    const bugIssue = getIssueById(page, testIssues.bug.id);
+    await bugIssue.dblclick();
+    await page.waitForTimeout(500); // Wait for double-click detection to pass
 
-    for (let i = 0; i < tabCount; i++) {
-      const tabLabel = await tabs.nth(i).textContent();
-      console.log(`Tab ${i}: ${tabLabel}`);
-    }
-
-    const detailTab = tabs.filter({ hasText: 'Issue:' });
+    // Tab should show bug issue ID
+    let detailTab = page.locator('.tabs-container .tab').filter({ hasText: testIssues.bug.id });
     await expect(detailTab).toBeVisible({ timeout: 5000 });
+
+    // Open task issue detail - wait to avoid debounce
+    await page.waitForTimeout(400); // Must exceed 300ms debounce
+    const taskIssue = getIssueById(page, testIssues.task.id);
+    await taskIssue.dblclick();
+    await page.waitForTimeout(500);
+
+    // Tab should show task issue ID
+    detailTab = page.locator('.tabs-container .tab').filter({ hasText: testIssues.task.id });
+    await expect(detailTab).toBeVisible({ timeout: 5000 });
+  });
+
+  // Filter tests
+  test('Filter: quick pick shows all options', async () => {
+    await executeFilterCommand(page);
+
+    const quickPick = page.locator('.quick-input-widget');
+    await expect(quickPick).toBeVisible({ timeout: 5000 });
+
+    await expect(page.locator('.quick-input-list-row').filter({ hasText: 'All Issues' })).toBeVisible();
+    await expect(page.locator('.quick-input-list-row').filter({ hasText: 'Open Issues' })).toBeVisible();
+    await expect(page.locator('.quick-input-list-row').filter({ hasText: 'Ready Issues' })).toBeVisible();
+
+    await page.keyboard.press('Escape');
+  });
+
+  test('Filter: Open filter hides closed issues', async () => {
+    // First verify we have 3 issues
+    await expect(getBeadsXTreeItems(page)).toHaveCount(3);
+
+    // Close one issue externally
+    execSync(`bd close ${testIssues.task.id} --reason "testing filter"`, {
+      cwd: workspacePath,
+      stdio: 'pipe',
+    });
+
+    // Refresh to pick up the external status change
+    await refreshBeadsXPanel(page);
+
+    // Apply Open filter
+    await executeFilterCommand(page);
+    await page.locator('.quick-input-list-row').filter({ hasText: 'Open Issues' }).click();
+    await page.waitForTimeout(2000);
+
+    // Should now show only 2 issues (closed one filtered out)
+    await expect(getBeadsXTreeItems(page)).toHaveCount(2);
+
+    // Reopen the issue for other tests
+    execSync(`bd update ${testIssues.task.id} --status open`, {
+      cwd: workspacePath,
+      stdio: 'pipe',
+    });
+
+    // Reset to All filter
+    await executeFilterCommand(page);
+    await page.locator('.quick-input-list-row').filter({ hasText: 'All Issues' }).click();
+    await page.waitForTimeout(2000);
+  });
+
+  test('Filter: Ready filter shows only unblocked issues', async () => {
+    // Create a blocking dependency: bug is blocked by epic
+    execSync(`bd dep add ${testIssues.bug.id} ${testIssues.epic.id} --type blocks`, {
+      cwd: workspacePath,
+      stdio: 'pipe',
+    });
+
+    // Refresh to pick up the external dependency change
+    await refreshBeadsXPanel(page);
+
+    // Apply Ready filter
+    await executeFilterCommand(page);
+    await page.locator('.quick-input-list-row').filter({ hasText: 'Ready Issues' }).click();
+
+    // Wait for tree to show only 2 items (epic and task, but not bug)
+    await expect(getBeadsXTreeItems(page)).toHaveCount(2, { timeout: 15000 });
+
+    // Verify bug is not visible and epic/task are
+    await expect(getIssueById(page, testIssues.bug.id)).not.toBeVisible();
+    await expect(getIssueById(page, testIssues.epic.id)).toBeVisible();
+    await expect(getIssueById(page, testIssues.task.id)).toBeVisible();
+
+    // Reset to All filter
+    await executeFilterCommand(page);
+    await page.locator('.quick-input-list-row').filter({ hasText: 'All Issues' }).click();
+    await page.waitForTimeout(2000);
+  });
+
+  // Refresh tests
+  test('Refresh: picks up externally added issues', async () => {
+    // Ensure we're on All filter and have 3 base issues
+    await expect(getBeadsXTreeItems(page)).toHaveCount(3, { timeout: 10000 });
+    const initialCount = await getBeadsXTreeItems(page).count();
+
+    // Add a new issue externally via bd CLI
+    execSync('bd create --title "Externally Added" --type task', {
+      cwd: workspacePath,
+      stdio: 'pipe',
+    });
+
+    // Refresh the panel
+    await refreshBeadsXPanel(page);
+
+    // Should now show one more issue
+    await expect(getBeadsXTreeItems(page)).toHaveCount(initialCount + 1, { timeout: 10000 });
+
+    // Verify the new issue appears
+    await expect(getIssueByTitle(page, 'Externally Added')).toBeVisible({ timeout: 5000 });
+  });
+
+  test('Refresh: updates changed issue status', async () => {
+    // Find epic issue and verify it shows [O]
+    const epicItem = getIssueById(page, testIssues.epic.id);
+    await expect(epicItem).toContainText('[O]');
+
+    // Close the issue externally
+    execSync(`bd close ${testIssues.epic.id} --reason "testing refresh"`, {
+      cwd: workspacePath,
+      stdio: 'pipe',
+    });
+
+    // Refresh
+    await refreshBeadsXPanel(page);
+
+    // Now should show [C] for closed - use Playwright's auto-retry
+    await expect(epicItem).toContainText('[C]', { timeout: 10000 });
+
+    // Reopen for other tests
+    execSync(`bd update ${testIssues.epic.id} --status open`, {
+      cwd: workspacePath,
+      stdio: 'pipe',
+    });
+    await refreshBeadsXPanel(page);
   });
 });
