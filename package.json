@@ -100,13 +100,21 @@
     "lint": "eslint src --ext ts",
     "package": "vsce package --no-dependencies --allow-missing-repository",
     "install-ext": "rm -f beadsx-*.vsix && vsce package --no-dependencies --allow-missing-repository && code --install-extension beadsx-*.vsix --force",
-    "install-ext-cursor": "rm -f beadsx-*.vsix && vsce package --no-dependencies --allow-missing-repository && cursor --install-extension beadsx-*.vsix --force"
+    "install-ext-cursor": "rm -f beadsx-*.vsix && vsce package --no-dependencies --allow-missing-repository && cursor --install-extension beadsx-*.vsix --force",
+    "test": "pnpm run bundle && playwright test",
+    "test:headed": "pnpm run bundle && playwright test --headed",
+    "test:integration": "tsc -p test/suite && vscode-test",
+    "pretest:integration": "pnpm run bundle"
   },
   "devDependencies": {
+    "@playwright/test": "^1.43.1",
+    "@types/mocha": "^10.0.10",
     "@types/node": "^20.10.0",
     "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^6.13.0",
     "@typescript-eslint/parser": "^6.13.0",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.7.0",
     "esbuild": "^0.27.0",
     "eslint": "^8.54.0",

@@ -2,7 +2,11 @@ out/
 node_modules/
 *.vsix
 .vscode-test/
+playwright-report/
+test-results/
 .claude/settings.local.json
 .beads/*.sock*
 .DS_Store
+daemon.lock
+daemon.log
 *.code-workspace
