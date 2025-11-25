@@ -1,6 +1,7 @@
 import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs';
+import { execSync } from 'node:child_process';
 import { downloadAndUnzipVSCode } from '@vscode/test-electron';
 import { _electron as electron, test, expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
@@ -11,10 +12,11 @@ let page: Page;
 // Get the project root directory
 const projectRoot = path.resolve(process.cwd());
 const extensionPath = projectRoot;
-const workspacePath = path.join(projectRoot, 'test/fixtures/demo-project');
 
-// Create temp directories for user-data and extensions to avoid conflicts
+// Create temp directories completely outside the project tree
+// This prevents bd from walking up and finding the main project's .beads database
 const tmpDir = path.join(os.tmpdir(), `beadsx-test-${Date.now()}`);
+const workspacePath = path.join(tmpDir, 'workspace');
 const userDataDir = path.join(tmpDir, 'user-data');
 const extensionsDir = path.join(tmpDir, 'extensions');
 
@@ -39,9 +41,23 @@ const args = [
 
 test.beforeAll(async () => {
   // Create temp directories
+  fs.mkdirSync(workspacePath, { recursive: true });
   fs.mkdirSync(userDataDir, { recursive: true });
   fs.mkdirSync(extensionsDir, { recursive: true });
-  console.log('Created temp dirs:', { userDataDir, extensionsDir });
+  console.log('Created temp dirs:', { workspacePath, userDataDir, extensionsDir });
+
+  // Initialize beads database with known test issues
+  try {
+    // First initialize the beads database with prefix "test"
+    execSync('bd init -p test -q', { cwd: workspacePath, stdio: 'pipe' });
+    // Then create test issues
+    execSync('bd create --title "Test Epic" --type epic', { cwd: workspacePath, stdio: 'pipe' });
+    execSync('bd create --title "Test Bug" --type bug', { cwd: workspacePath, stdio: 'pipe' });
+    execSync('bd create --title "Test Task" --type task', { cwd: workspacePath, stdio: 'pipe' });
+    console.log('Initialized beads database with 3 test issues');
+  } catch (e) {
+    console.log('Failed to initialize beads (bd may not be available):', e);
+  }
 
   const vscodeExecutablePath = await downloadAndUnzipVSCode('stable');
   console.log('VSCode executable path:', vscodeExecutablePath);
