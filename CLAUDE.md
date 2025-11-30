@@ -118,3 +118,4 @@ Before committing code changes, ALWAYS sync beads with completed work:
 - Prevents confusion about what's actually done
 - Maintains accurate project status for the team
 - Ensures beads reflects reality, not just intentions
+- please ask me before committing so I can look at the changes
