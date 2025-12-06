@@ -268,7 +268,7 @@ export function activate(context: vscode.ExtensionContext) {
       {
         label: currentFilter === 'recent' ? '$(check) Recent Issues' : 'Recent Issues',
         value: 'recent',
-        description: currentFilter === 'recent' ? 'current' : 'Open + recently closed'
+        description: currentFilter === 'recent' ? 'current' : undefined
       }
     ];
 
@@ -298,7 +298,7 @@ export function activate(context: vscode.ExtensionContext) {
     if (e.affectsConfiguration('beadsx.autoReloadInterval')) {
       beadsProvider.startAutoReload();
     }
-    if (e.affectsConfiguration('beadsx.recentWindowHours') && beadsProvider.getFilter() === 'recent') {
+    if (e.affectsConfiguration('beadsx.recentWindowMinutes') && beadsProvider.getFilter() === 'recent') {
       beadsProvider.refresh();
     }
   });

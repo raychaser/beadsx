@@ -89,12 +89,12 @@
           "default": false,
           "description": "Show shortened issue IDs without prefix (e.g., '123' instead of 'beadsx-123')"
         },
-        "beadsx.recentWindowHours": {
+        "beadsx.recentWindowMinutes": {
           "type": "number",
-          "default": 1,
-          "minimum": 0.1,
-          "maximum": 168,
-          "description": "Time window in hours for 'Recent Issues' filter to include closed issues"
+          "default": 60,
+          "minimum": 1,
+          "maximum": 10080,
+          "description": "Time window in minutes for 'Recent Issues' filter to include closed issues (default: 60 = 1 hour)"
         }
       }
     }
@@ -111,7 +111,8 @@
     "test": "pnpm run bundle && playwright test",
     "test:headed": "pnpm run bundle && playwright test --headed",
     "test:integration": "tsc -p test/suite && vscode-test",
-    "pretest:integration": "pnpm run bundle"
+    "pretest:integration": "pnpm run bundle",
+    "test:unit": "vitest run"
   },
   "devDependencies": {
     "@playwright/test": "^1.43.1",
@@ -125,6 +126,7 @@
     "@vscode/vsce": "^3.7.0",
     "esbuild": "^0.27.0",
     "eslint": "^8.54.0",
-    "typescript": "^5.3.2"
+    "typescript": "^5.3.2",
+    "vitest": "^4.0.15"
   }
 }

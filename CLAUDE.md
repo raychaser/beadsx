@@ -1,4 +1,12 @@
-Please see AGENTS.md for the project's issue tracking system.
+**Note**: This project uses [bd (beads)](https://github.com/steveyegge/beads)
+for issue tracking. Use `bd` commands instead of markdown TODOs.
+See AGENTS.md for workflow details.
+
+# IMPORTANT DATABASE USAGE WARNING
+
+NEVER delete the prod or dev database for running tests, no matter what kind of tests. The dev and production databases are shared and used by multiple teams. If you delete the database, you will break the work of other teams.
+
+Only use the commotion-test database for tests. Local, e2e, CI locally, doesn't matter NEVER ever delete commotion-prod or commotion-dev.
 
 # Beads Workflow (IMPORTANT)
 
@@ -9,26 +17,31 @@ We are using bd (beads) for issue tracking. Use beads PROACTIVELY and SYSTEMATIC
 ### Outer Loop (Epic Lifecycle)
 
 1. **Pre-flight checks** when starting a new epic ("next epic", "next thing", ...):
+
    - Ensure you are on the `main` branch
    - Pull latest changes: `git pull origin main`
    - Verify no outstanding PRs exist before starting
 
 2. **Create feature branch** from latest main:
+
    - Branch naming: `feature/<descriptive-name>` or `feature/<epic-id>`
    - Example: `git checkout -b feature/mentions-enhancement`
 
-3. **Create epic in beads** using `create` with `issue_type="epic"`
+3. **Plan and create epic in beads** using `create` with `issue_type="epic"`. Then create a subtask to named Testing to track all testing tasks for the epic. Then create a subtask name Bugs for the inevitable bugs we will find. Only close the epic, and the Bugs and Tests subtaks when the PR is merged.
 
 4. **Enter inner loop** (see below)
 
 5. **Verify all tests pass** - if not, go back to inner loop
 
 6. **Submit PR for review**:
-   - Close the epic in beads before creating PR
+
    - Push branch and create Pull Request
    - DO NOT merge - wait for user review and approval
+   - Do not close the epic in beads until the PR is merged
 
 7. **After user merges**:
+   - Close the epic in beads before creating PR
+   - Close the Bugs and Tests subtasks of the epic
    - Switch back to main: `git checkout main`
    - Pull latest: `git pull origin main`
    - Ready for next epic
@@ -36,16 +49,22 @@ We are using bd (beads) for issue tracking. Use beads PROACTIVELY and SYSTEMATIC
 ### Inner Loop (Task Execution)
 
 1. **Plan initial tasks** for the epic
-   - Use beads dependency tracking for structuring tasks
+
+   - Create a comprehensive and granular set of beads for all this with tasks, subtasks, and dependency structure overlaid, with detailed comments so that the whole thing is totally self-contained and self-documenting (including relevant background, reasoning/justification, considerations, etc.-- anything we'd want our "future self" to know about the goals and intentions and thought process and how it serves the overarching goals of the project.)"
    - Get alignment on the plan before implementation
 
-2. **Do work and test**
-   - Commit incrementally as tasks complete
+2. **Track discovered work** - Create new tasks under the epic or existing tasks as needed.
+
+   - Remember to always create comprehensive and granular sets of beads for all this with tasks, subtasks, and dependency structure overlaid, with detailed comments so that the whole thing is totally self-contained and self-documenting (including relevant background, reasoning/justification, considerations, etc.-- anything we'd want our "future self" to know about the goals and intentions and thought process and how it serves the overarching goals of the project.)"
+
+3. **Do work and test**
+
+   - After testing, give the user a chance to look at the changes
+   - Commit incrementally as tasks complete if the users approval
    - Keep commits atomic and well-described
 
-3. **Track discovered work** - Create new tasks under the epic or existing tasks as needed
-
 4. **Interact with user** for input and feedback
+
    - **Important**: All work is tracked in beads, even one-offs from chatting
 
 5. **Repeat** until all tasks are complete and tests pass
@@ -105,17 +124,19 @@ We are using bd (beads) for issue tracking. Use beads PROACTIVELY and SYSTEMATIC
 
 ## When Committing (CRITICAL)
 
-Before committing code changes, ALWAYS sync beads with completed work:
+Before committing code changes, ALWAYS:
 
-1. **Review related beads issues** - Check if any issues were completed by your changes
-2. **Close completed issues** - Use `close(issue_id="...", reason="...")` with meaningful completion notes
-3. **Verify dependencies** - Check if closing an issue unblocks any dependent tasks
-4. **Commit beads updates** - Always commit `.beads/issues.jsonl` changes along with code
-5. **Final verification** - Run `list(status="open")` to ensure no orphaned open issues remain
+1. **Run lint:fix** - Execute `bun run lint:fix` to auto-fix formatting issues before staging
+2. **Review related beads issues** - Check if any issues were completed by your changes
+3. **Close completed issues** - Use `close(issue_id="...", reason="...")` with meaningful completion notes
+4. **Verify dependencies** - Check if closing an issue unblocks any dependent tasks
+5. **Commit beads updates** - Always commit `.beads/issues.jsonl` changes along with code
+6. **Final verification** - Run `list(status="open")` to ensure no orphaned open issues remain
 
 **Why this matters:**
+
 - Keeps issue tracking in sync with actual code state
 - Prevents confusion about what's actually done
 - Maintains accurate project status for the team
 - Ensures beads reflects reality, not just intentions
-- please ask me before committing so I can look at the changes
+- Please ask me to look at the changes before committing to git

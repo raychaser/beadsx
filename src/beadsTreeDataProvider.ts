@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { listFilteredIssues, BeadsIssue, FilterMode } from './beadsService';
+import { formatTimeAgo, sortIssues } from './utils';
 
 export { BeadsIssue };
 
@@ -119,6 +120,8 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     return this.issuesCache.some(issue => issue.parentId === issueId);
   }
 
+  // formatTimeAgo and sortIssues imported from './utils'
+
   getTreeItem(element: BeadsIssue): vscode.TreeItem {
     // Determine if this issue has children
     const hasChildIssues = this.hasChildren(element.id);
@@ -173,7 +176,13 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     const treeItem = new vscode.TreeItem(`${statusSymbol} ${displayId}`, collapsibleState);
 
     // Don't set treeItem.id to allow collapsible state to be re-evaluated on each refresh
-    treeItem.description = element.title;
+    // Show relative time for closed issues
+    if (element.status === 'closed' && element.closed_at) {
+      const timeAgo = formatTimeAgo(element.closed_at);
+      treeItem.description = timeAgo ? `${element.title} (${timeAgo})` : element.title;
+    } else {
+      treeItem.description = element.title;
+    }
     treeItem.tooltip = `${element.title}\nType: ${element.issue_type}\nPriority: ${element.priority}\nStatus: ${element.status}`;
 
     // Determine icon based on issue type
@@ -226,6 +235,11 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
             this._onDidLoadData.fire();
             return issues;
           })
+          .catch(error => {
+            this.log(`Error loading issues: ${error}`);
+            vscode.window.showWarningMessage(`BeadsX: Failed to load issues. Check output channel for details.`);
+            return [];
+          })
           .finally(() => { this.loadingPromise = null; });
       }
       await this.loadingPromise;
@@ -233,11 +247,18 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
 
     if (element) {
       // Return children of this element (issues whose parentId matches this element's id)
-      return this.issuesCache.filter(issue => issue.parentId === element.id);
+      const children = this.issuesCache.filter(issue => issue.parentId === element.id);
+      return sortIssues(children);
     }
 
-    // Return root issues (issues with no parent)
-    return this.issuesCache.filter(issue => !issue.parentId);
+    // Return root issues (issues with no parent OR whose parent is not in the filtered cache)
+    const roots = this.issuesCache.filter(issue => {
+      if (!issue.parentId) return true;
+      // If parent was filtered out, treat this issue as a root
+      const parentInCache = this.issuesCache.some(i => i.id === issue.parentId);
+      return !parentInCache;
+    });
+    return sortIssues(roots);
   }
 
   getParent(element: BeadsIssue): BeadsIssue | undefined {

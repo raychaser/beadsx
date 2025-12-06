@@ -355,6 +355,7 @@ test.describe('BeadsX Extension', () => {
     await expect(page.locator('.quick-input-list-row').filter({ hasText: 'All Issues' })).toBeVisible();
     await expect(page.locator('.quick-input-list-row').filter({ hasText: 'Open Issues' })).toBeVisible();
     await expect(page.locator('.quick-input-list-row').filter({ hasText: 'Ready Issues' })).toBeVisible();
+    await expect(page.locator('.quick-input-list-row').filter({ hasText: 'Recent Issues' })).toBeVisible();
 
     await page.keyboard.press('Escape');
   });
