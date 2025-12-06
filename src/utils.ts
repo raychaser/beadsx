@@ -60,15 +60,27 @@ export const DEFAULT_RECENT_WINDOW_MINUTES = 60; // 1 hour default
  * Validate and clamp recentWindowMinutes config value
  * Returns the validated value and whether it was modified
  */
-export function validateRecentWindowMinutes(value: unknown): { value: number; warning: string | null } {
+export function validateRecentWindowMinutes(value: unknown): {
+  value: number;
+  warning: string | null;
+} {
   if (typeof value !== 'number' || Number.isNaN(value)) {
-    return { value: DEFAULT_RECENT_WINDOW_MINUTES, warning: `Invalid recentWindowMinutes config, using default ${DEFAULT_RECENT_WINDOW_MINUTES} minutes` };
+    return {
+      value: DEFAULT_RECENT_WINDOW_MINUTES,
+      warning: `Invalid recentWindowMinutes config, using default ${DEFAULT_RECENT_WINDOW_MINUTES} minutes`,
+    };
   }
   if (value < MIN_RECENT_WINDOW_MINUTES) {
-    return { value: MIN_RECENT_WINDOW_MINUTES, warning: `recentWindowMinutes (${value}) below minimum, clamping to ${MIN_RECENT_WINDOW_MINUTES}` };
+    return {
+      value: MIN_RECENT_WINDOW_MINUTES,
+      warning: `recentWindowMinutes (${value}) below minimum, clamping to ${MIN_RECENT_WINDOW_MINUTES}`,
+    };
   }
   if (value > MAX_RECENT_WINDOW_MINUTES) {
-    return { value: MAX_RECENT_WINDOW_MINUTES, warning: `recentWindowMinutes (${value}) above maximum, clamping to ${MAX_RECENT_WINDOW_MINUTES}` };
+    return {
+      value: MAX_RECENT_WINDOW_MINUTES,
+      warning: `recentWindowMinutes (${value}) above maximum, clamping to ${MAX_RECENT_WINDOW_MINUTES}`,
+    };
   }
   return { value, warning: null };
 }

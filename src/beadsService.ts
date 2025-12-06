@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as vscode from 'vscode';
-import { validateRecentWindowMinutes, DEFAULT_RECENT_WINDOW_MINUTES } from './utils';
+import { DEFAULT_RECENT_WINDOW_MINUTES, validateRecentWindowMinutes } from './utils';
 
 const execFileAsync = promisify(execFile);
 
@@ -56,13 +56,15 @@ export async function listReadyIssues(workspaceRoot: string): Promise<BeadsIssue
   let stderr: string;
   try {
     const result = await execFileAsync(bdCmd, ['ready', '--json'], {
-      cwd: workspaceRoot
+      cwd: workspaceRoot,
     });
     stdout = result.stdout;
     stderr = result.stderr;
   } catch (error) {
     log(`Error: Failed to execute 'bd ready': ${error}`);
-    vscode.window.showWarningMessage(`BeadsX: Failed to execute 'bd' command. Is it installed and in your PATH?`);
+    vscode.window.showWarningMessage(
+      `BeadsX: Failed to execute 'bd' command. Is it installed and in your PATH?`,
+    );
     return [];
   }
 
@@ -91,7 +93,9 @@ export async function listReadyIssues(workspaceRoot: string): Promise<BeadsIssue
     return [];
   } catch (error) {
     log(`Error: Failed to parse 'bd ready' output: ${error}`);
-    vscode.window.showWarningMessage(`BeadsX: Failed to parse ready issues. Output may be corrupted.`);
+    vscode.window.showWarningMessage(
+      `BeadsX: Failed to parse ready issues. Output may be corrupted.`,
+    );
     return [];
   }
 }
@@ -107,13 +111,15 @@ export async function exportIssuesWithDeps(workspaceRoot: string): Promise<Beads
   let stderr: string;
   try {
     const result = await execFileAsync(bdCmd, ['export'], {
-      cwd: workspaceRoot
+      cwd: workspaceRoot,
     });
     stdout = result.stdout;
     stderr = result.stderr;
   } catch (error) {
     log(`Error: Failed to execute 'bd export': ${error}`);
-    vscode.window.showWarningMessage(`BeadsX: Failed to execute 'bd' command. Is it installed and in your PATH?`);
+    vscode.window.showWarningMessage(
+      `BeadsX: Failed to execute 'bd' command. Is it installed and in your PATH?`,
+    );
     return [];
   }
 
@@ -129,7 +135,10 @@ export async function exportIssuesWithDeps(workspaceRoot: string): Promise<Beads
   }
 
   // Parse JSONL output - separate error handling for parsing
-  const lines = stdout.trim().split('\n').filter(line => line.trim());
+  const lines = stdout
+    .trim()
+    .split('\n')
+    .filter((line) => line.trim());
   log(`parsing ${lines.length} lines`);
 
   const issues: BeadsIssue[] = [];
@@ -140,11 +149,9 @@ export async function exportIssuesWithDeps(workspaceRoot: string): Promise<Beads
       const issue = JSON.parse(line);
       // Compute parentId from dependencies (parent-child takes precedence, then blocks)
       if (issue.dependencies) {
-        const parentDep = issue.dependencies.find(
-          (dep: BeadsDependency) => dep.type === 'parent-child'
-        ) || issue.dependencies.find(
-          (dep: BeadsDependency) => dep.type === 'blocks'
-        );
+        const parentDep =
+          issue.dependencies.find((dep: BeadsDependency) => dep.type === 'parent-child') ||
+          issue.dependencies.find((dep: BeadsDependency) => dep.type === 'blocks');
         if (parentDep) {
           issue.parentId = parentDep.depends_on_id;
         }
@@ -160,7 +167,9 @@ export async function exportIssuesWithDeps(workspaceRoot: string): Promise<Beads
   if (parseErrors > 0) {
     log(`Warning: ${parseErrors}/${lines.length} lines failed to parse`);
     if (parseErrors > lines.length * 0.1) {
-      vscode.window.showWarningMessage(`BeadsX: ${parseErrors} issues failed to load. Data may be corrupted.`);
+      vscode.window.showWarningMessage(
+        `BeadsX: ${parseErrors} issues failed to load. Data may be corrupted.`,
+      );
     }
   }
 
@@ -169,8 +178,10 @@ export async function exportIssuesWithDeps(workspaceRoot: string): Promise<Beads
   return issues;
 }
 
-
-export async function listFilteredIssues(workspaceRoot: string, filter: FilterMode): Promise<BeadsIssue[]> {
+export async function listFilteredIssues(
+  workspaceRoot: string,
+  filter: FilterMode,
+): Promise<BeadsIssue[]> {
   log(`listFilteredIssues called with filter: ${filter}`);
 
   if (filter === 'ready') {
@@ -184,7 +195,7 @@ export async function listFilteredIssues(workspaceRoot: string, filter: FilterMo
   log(`listFilteredIssues got ${issues.length} issues from export`);
 
   if (filter === 'open') {
-    const openIssues = issues.filter(issue => issue.status !== 'closed');
+    const openIssues = issues.filter((issue) => issue.status !== 'closed');
     log(`listFilteredIssues returning ${openIssues.length} open issues`);
     return openIssues;
   }
@@ -197,9 +208,9 @@ export async function listFilteredIssues(workspaceRoot: string, filter: FilterMo
       log(`Warning: ${warning}`);
     }
 
-    const cutoffTime = Date.now() - (recentWindowMinutes * 60 * 1000);
+    const cutoffTime = Date.now() - recentWindowMinutes * 60 * 1000;
 
-    const recentIssues = issues.filter(issue => {
+    const recentIssues = issues.filter((issue) => {
       if (issue.status !== 'closed') return true;
       if (!issue.closed_at) {
         log(`Warning: Closed issue ${issue.id} has no closed_at timestamp`);
@@ -213,7 +224,9 @@ export async function listFilteredIssues(workspaceRoot: string, filter: FilterMo
       return closedTime >= cutoffTime;
     });
 
-    log(`listFilteredIssues returning ${recentIssues.length} recent issues (window: ${recentWindowMinutes}m)`);
+    log(
+      `listFilteredIssues returning ${recentIssues.length} recent issues (window: ${recentWindowMinutes}m)`,
+    );
     return recentIssues;
   }
 

@@ -1,12 +1,14 @@
 import * as vscode from 'vscode';
-import { listFilteredIssues, BeadsIssue, FilterMode } from './beadsService';
+import { BeadsIssue, type FilterMode, listFilteredIssues } from './beadsService';
 import { formatTimeAgo, sortIssues } from './utils';
 
 export { BeadsIssue };
 
 export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue> {
-  private _onDidChangeTreeData: vscode.EventEmitter<BeadsIssue | undefined | null | void> = new vscode.EventEmitter<BeadsIssue | undefined | null | void>();
-  readonly onDidChangeTreeData: vscode.Event<BeadsIssue | undefined | null | void> = this._onDidChangeTreeData.event;
+  private _onDidChangeTreeData: vscode.EventEmitter<BeadsIssue | undefined | null | void> =
+    new vscode.EventEmitter<BeadsIssue | undefined | null | void>();
+  readonly onDidChangeTreeData: vscode.Event<BeadsIssue | undefined | null | void> =
+    this._onDidChangeTreeData.event;
   private _onDidLoadData: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
   readonly onDidLoadData: vscode.Event<void> = this._onDidLoadData.event;
   private workspaceRoot: string;
@@ -64,10 +66,10 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
 
   getFilterDisplayName(): string {
     const names: Record<FilterMode, string> = {
-      'all': 'All Issues',
-      'open': 'Open Issues',
-      'ready': 'Ready Issues',
-      'recent': 'Recent Issues'
+      all: 'All Issues',
+      open: 'Open Issues',
+      ready: 'Ready Issues',
+      recent: 'Recent Issues',
     };
     return names[this.filterMode];
   }
@@ -82,9 +84,9 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     }
 
     // Find issues that are open/in_progress and have children
-    return this.issuesCache.filter(issue => {
+    return this.issuesCache.filter((issue) => {
       const isOpen = issue.status !== 'closed';
-      const hasChildren = this.issuesCache.some(child => child.parentId === issue.id);
+      const hasChildren = this.issuesCache.some((child) => child.parentId === issue.id);
       return isOpen && hasChildren;
     });
   }
@@ -117,7 +119,7 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
   }
 
   private hasChildren(issueId: string): boolean {
-    return this.issuesCache.some(issue => issue.parentId === issueId);
+    return this.issuesCache.some((issue) => issue.parentId === issueId);
   }
 
   // formatTimeAgo and sortIssues imported from './utils'
@@ -142,7 +144,9 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
       }
     }
 
-    this.log(`getTreeItem ${element.id}: hasChildren=${hasChildIssues}, autoExpand=${autoExpand}, state=${collapsibleState === vscode.TreeItemCollapsibleState.Expanded ? 'Expanded' : collapsibleState === vscode.TreeItemCollapsibleState.Collapsed ? 'Collapsed' : 'None'}`);
+    this.log(
+      `getTreeItem ${element.id}: hasChildren=${hasChildIssues}, autoExpand=${autoExpand}, state=${collapsibleState === vscode.TreeItemCollapsibleState.Expanded ? 'Expanded' : collapsibleState === vscode.TreeItemCollapsibleState.Collapsed ? 'Collapsed' : 'None'}`,
+    );
 
     // Status symbol
     let statusSymbol: string;
@@ -211,7 +215,7 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     treeItem.command = {
       command: 'beadsx.showDetail',
       title: 'Show Issue Detail',
-      arguments: [element]
+      arguments: [element],
     };
 
     return treeItem;
@@ -227,7 +231,7 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
       if (!this.loadingPromise) {
         const startTime = Date.now();
         this.loadingPromise = listFilteredIssues(this.workspaceRoot, this.filterMode)
-          .then(issues => {
+          .then((issues) => {
             const elapsed = Date.now() - startTime;
             this.log(`loaded ${issues.length} issues in ${elapsed}ms`);
             this.issuesCache = issues;
@@ -235,27 +239,31 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
             this._onDidLoadData.fire();
             return issues;
           })
-          .catch(error => {
+          .catch((error) => {
             this.log(`Error loading issues: ${error}`);
-            vscode.window.showWarningMessage(`BeadsX: Failed to load issues. Check output channel for details.`);
+            vscode.window.showWarningMessage(
+              `BeadsX: Failed to load issues. Check output channel for details.`,
+            );
             return [];
           })
-          .finally(() => { this.loadingPromise = null; });
+          .finally(() => {
+            this.loadingPromise = null;
+          });
       }
       await this.loadingPromise;
     }
 
     if (element) {
       // Return children of this element (issues whose parentId matches this element's id)
-      const children = this.issuesCache.filter(issue => issue.parentId === element.id);
+      const children = this.issuesCache.filter((issue) => issue.parentId === element.id);
       return sortIssues(children);
     }
 
     // Return root issues (issues with no parent OR whose parent is not in the filtered cache)
-    const roots = this.issuesCache.filter(issue => {
+    const roots = this.issuesCache.filter((issue) => {
       if (!issue.parentId) return true;
       // If parent was filtered out, treat this issue as a root
-      const parentInCache = this.issuesCache.some(i => i.id === issue.parentId);
+      const parentInCache = this.issuesCache.some((i) => i.id === issue.parentId);
       return !parentInCache;
     });
     return sortIssues(roots);
@@ -265,6 +273,6 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     if (!element.parentId) {
       return undefined;
     }
-    return this.issuesCache.find(issue => issue.id === element.parentId);
+    return this.issuesCache.find((issue) => issue.id === element.parentId);
   }
 }

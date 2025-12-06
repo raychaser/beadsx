@@ -1,11 +1,11 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  DEFAULT_RECENT_WINDOW_MINUTES,
   formatTimeAgo,
+  MAX_RECENT_WINDOW_MINUTES,
+  MIN_RECENT_WINDOW_MINUTES,
   sortIssues,
   validateRecentWindowMinutes,
-  MIN_RECENT_WINDOW_MINUTES,
-  MAX_RECENT_WINDOW_MINUTES,
-  DEFAULT_RECENT_WINDOW_MINUTES,
 } from './utils';
 
 describe('formatTimeAgo', () => {
@@ -121,7 +121,7 @@ describe('sortIssues', () => {
     ];
     const sorted = sortIssues(issues);
     // @ts-expect-error - id is for testing
-    expect(sorted.map(i => i.id)).toEqual(['a', 'b', 'c']);
+    expect(sorted.map((i) => i.id)).toEqual(['a', 'b', 'c']);
   });
 
   it('handles empty array', () => {

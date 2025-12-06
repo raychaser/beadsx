@@ -104,7 +104,9 @@
     "compile": "tsc -p ./",
     "bundle": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --minify",
     "watch": "tsc -watch -p ./",
-    "lint": "eslint src --ext ts",
+    "lint": "biome check src",
+    "lint:fix": "biome check --write src",
+    "format": "biome format --write src",
     "package": "vsce package --no-dependencies --allow-missing-repository",
     "install-ext": "rm -f beadsx-*.vsix && vsce package --no-dependencies --allow-missing-repository && code --install-extension beadsx-*.vsix --force",
     "install-ext-cursor": "rm -f beadsx-*.vsix && vsce package --no-dependencies --allow-missing-repository && cursor --install-extension beadsx-*.vsix --force",
@@ -112,21 +114,27 @@
     "test:headed": "pnpm run bundle && playwright test --headed",
     "test:integration": "tsc -p test/suite && vscode-test",
     "pretest:integration": "pnpm run bundle",
-    "test:unit": "vitest run"
+    "test:unit": "vitest run",
+    "prepare": "husky"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.3.8",
     "@playwright/test": "^1.43.1",
     "@types/mocha": "^10.0.10",
     "@types/node": "^20.10.0",
     "@types/vscode": "^1.85.0",
-    "@typescript-eslint/eslint-plugin": "^6.13.0",
-    "@typescript-eslint/parser": "^6.13.0",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.7.0",
     "esbuild": "^0.27.0",
-    "eslint": "^8.54.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
     "typescript": "^5.3.2",
     "vitest": "^4.0.15"
+  },
+  "lint-staged": {
+    "*.ts": [
+      "biome check --write"
+    ]
   }
 }

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-import { type FilterMode, setOutputChannel, BeadsIssue } from './beadsService';
+import { type BeadsIssue, type FilterMode, setOutputChannel } from './beadsService';
 import { BeadsTreeDataProvider } from './beadsTreeDataProvider';
 
 // Track last click for double-click detection
@@ -8,12 +8,13 @@ let lastClickedItem = { id: '', timestamp: 0 };
 const DOUBLE_CLICK_THRESHOLD = 300; // milliseconds
 
 function getDetailHtml(issue: BeadsIssue): string {
-  const escapeHtml = (str: string) => str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+  const escapeHtml = (str: string) =>
+    str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
 
   const formatDate = (dateStr: string) => {
     try {
@@ -155,27 +156,39 @@ function getDetailHtml(issue: BeadsIssue): string {
     <div class="metadata-label">Updated</div>
     <div class="metadata-value">${formatDate(issue.updated_at)}</div>
 
-    ${issue.closed_at ? `
+    ${
+      issue.closed_at
+        ? `
     <div class="metadata-label">Closed</div>
     <div class="metadata-value">${formatDate(issue.closed_at)}</div>
-    ` : ''}
+    `
+        : ''
+    }
 
-    ${issue.labels && issue.labels.length > 0 ? `
+    ${
+      issue.labels && issue.labels.length > 0
+        ? `
     <div class="metadata-label">Labels</div>
     <div class="metadata-value">
       <div class="labels">
-        ${issue.labels.map(label => `<span class="label">${escapeHtml(label)}</span>`).join('')}
+        ${issue.labels.map((label) => `<span class="label">${escapeHtml(label)}</span>`).join('')}
       </div>
     </div>
-    ` : ''}
+    `
+        : ''
+    }
   </div>
 
-  ${issue.description ? `
+  ${
+    issue.description
+      ? `
   <div class="section">
     <div class="section-title">Description</div>
     <div class="section-content">${escapeHtml(issue.description)}</div>
   </div>
-  ` : ''}
+  `
+      : ''
+  }
 </body>
 </html>`;
 }
@@ -190,7 +203,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   const treeView = vscode.window.createTreeView('beadsxIssues', {
     treeDataProvider: beadsProvider,
-    showCollapseAll: true
+    showCollapseAll: true,
   });
 
   // Set initial filter in title
@@ -199,7 +212,7 @@ export function activate(context: vscode.ExtensionContext) {
   // Auto-expand open issues after data is loaded
   const autoExpandIssues = async () => {
     // Longer delay to ensure tree is fully rendered
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 500));
     const expandable = beadsProvider.getExpandableIssues();
     outputChannel.appendLine(`Auto-expanding ${expandable.length} issues`);
     for (const issue of expandable) {
@@ -222,30 +235,32 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   // Show detail panel on double-click
-  const showDetailCommand = vscode.commands.registerCommand('beadsx.showDetail', (issue: BeadsIssue) => {
-    const now = Date.now();
-    const isDoubleClick =
-      issue.id === lastClickedItem.id &&
-      (now - lastClickedItem.timestamp) < DOUBLE_CLICK_THRESHOLD;
+  const showDetailCommand = vscode.commands.registerCommand(
+    'beadsx.showDetail',
+    (issue: BeadsIssue) => {
+      const now = Date.now();
+      const isDoubleClick =
+        issue.id === lastClickedItem.id && now - lastClickedItem.timestamp < DOUBLE_CLICK_THRESHOLD;
 
-    lastClickedItem = { id: issue.id, timestamp: now };
+      lastClickedItem = { id: issue.id, timestamp: now };
 
-    if (isDoubleClick) {
-      // Create webview panel
-      const panel = vscode.window.createWebviewPanel(
-        'beadsxDetail',
-        `Issue: ${issue.id}`,
-        vscode.ViewColumn.One,
-        {
-          enableScripts: false,
-          retainContextWhenHidden: true
-        }
-      );
+      if (isDoubleClick) {
+        // Create webview panel
+        const panel = vscode.window.createWebviewPanel(
+          'beadsxDetail',
+          `Issue: ${issue.id}`,
+          vscode.ViewColumn.One,
+          {
+            enableScripts: false,
+            retainContextWhenHidden: true,
+          },
+        );
 
-      panel.webview.html = getDetailHtml(issue);
-      outputChannel.appendLine(`Opened detail panel for ${issue.id}`);
-    }
-  });
+        panel.webview.html = getDetailHtml(issue);
+        outputChannel.appendLine(`Opened detail panel for ${issue.id}`);
+      }
+    },
+  );
 
   const filterCommand = vscode.commands.registerCommand('beadsx.filter', async () => {
     const currentFilter = beadsProvider.getFilter();
@@ -253,35 +268,35 @@ export function activate(context: vscode.ExtensionContext) {
       {
         label: currentFilter === 'all' ? '$(check) All Issues' : 'All Issues',
         value: 'all',
-        description: currentFilter === 'all' ? 'current' : undefined
+        description: currentFilter === 'all' ? 'current' : undefined,
       },
       {
         label: currentFilter === 'open' ? '$(check) Open Issues' : 'Open Issues',
         value: 'open',
-        description: currentFilter === 'open' ? 'current' : undefined
+        description: currentFilter === 'open' ? 'current' : undefined,
       },
       {
         label: currentFilter === 'ready' ? '$(check) Ready Issues' : 'Ready Issues',
         value: 'ready',
-        description: currentFilter === 'ready' ? 'current' : undefined
+        description: currentFilter === 'ready' ? 'current' : undefined,
       },
       {
         label: currentFilter === 'recent' ? '$(check) Recent Issues' : 'Recent Issues',
         value: 'recent',
-        description: currentFilter === 'recent' ? 'current' : undefined
-      }
+        description: currentFilter === 'recent' ? 'current' : undefined,
+      },
     ];
 
     const filterNames: Record<FilterMode, string> = {
-      'all': 'All Issues',
-      'open': 'Open Issues',
-      'ready': 'Ready Issues',
-      'recent': 'Recent Issues'
+      all: 'All Issues',
+      open: 'Open Issues',
+      ready: 'Ready Issues',
+      recent: 'Recent Issues',
     };
 
     const selected = await vscode.window.showQuickPick(options, {
       placeHolder: 'Select filter',
-      title: `Filter Issues (current: ${filterNames[currentFilter]})`
+      title: `Filter Issues (current: ${filterNames[currentFilter]})`,
     });
 
     if (selected) {
@@ -294,18 +309,29 @@ export function activate(context: vscode.ExtensionContext) {
   beadsProvider.startAutoReload();
 
   // Listen for configuration changes
-  const configChangeListener = vscode.workspace.onDidChangeConfiguration(e => {
+  const configChangeListener = vscode.workspace.onDidChangeConfiguration((e) => {
     if (e.affectsConfiguration('beadsx.autoReloadInterval')) {
       beadsProvider.startAutoReload();
     }
-    if (e.affectsConfiguration('beadsx.recentWindowMinutes') && beadsProvider.getFilter() === 'recent') {
+    if (
+      e.affectsConfiguration('beadsx.recentWindowMinutes') &&
+      beadsProvider.getFilter() === 'recent'
+    ) {
       beadsProvider.refresh();
     }
   });
 
-  context.subscriptions.push(treeView, refreshCommand, showDetailCommand, filterCommand, configChangeListener, dataLoadListener, {
-    dispose: () => beadsProvider.dispose()
-  });
+  context.subscriptions.push(
+    treeView,
+    refreshCommand,
+    showDetailCommand,
+    filterCommand,
+    configChangeListener,
+    dataLoadListener,
+    {
+      dispose: () => beadsProvider.dispose(),
+    },
+  );
 }
 
 export function deactivate() {}
