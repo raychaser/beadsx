@@ -11,7 +11,15 @@ vsc-extension-quickstart.md
 node_modules/**
 .beads/**
 .claude/**
+.claude-trace/**
+.husky/**
 scripts/**
+test/**
+playwright-report/**
+vitest.config.js
+playwright.config.js
+.vscode-test.mjs
+biome.json
 AGENTS.md
 CLAUDE.md
 *.code-workspace
