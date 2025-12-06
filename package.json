@@ -88,6 +88,13 @@
           "type": "boolean",
           "default": false,
           "description": "Show shortened issue IDs without prefix (e.g., '123' instead of 'beadsx-123')"
+        },
+        "beadsx.recentWindowHours": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0.1,
+          "maximum": 168,
+          "description": "Time window in hours for 'Recent Issues' filter to include closed issues"
         }
       }
     }

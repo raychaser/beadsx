@@ -65,7 +65,8 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     const names: Record<FilterMode, string> = {
       'all': 'All Issues',
       'open': 'Open Issues',
-      'ready': 'Ready Issues'
+      'ready': 'Ready Issues',
+      'recent': 'Recent Issues'
     };
     return names[this.filterMode];
   }

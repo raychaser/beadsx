@@ -75,7 +75,7 @@ export async function listReadyIssues(workspaceRoot: string): Promise<BeadsIssue
   }
 }
 
-export type FilterMode = 'all' | 'open' | 'ready';
+export type FilterMode = 'all' | 'open' | 'ready' | 'recent';
 
 export async function exportIssuesWithDeps(workspaceRoot: string): Promise<BeadsIssue[]> {
   try {
@@ -147,6 +147,23 @@ export async function listFilteredIssues(workspaceRoot: string, filter: FilterMo
     const openIssues = issues.filter(issue => issue.status !== 'closed');
     log(`listFilteredIssues returning ${openIssues.length} open issues`);
     return openIssues;
+  }
+
+  if (filter === 'recent') {
+    const config = vscode.workspace.getConfiguration('beadsx');
+    const recentWindowHours = config.get<number>('recentWindowHours', 1);
+    const cutoffTime = Date.now() - (recentWindowHours * 60 * 60 * 1000);
+
+    const recentIssues = issues.filter(issue => {
+      if (issue.status !== 'closed') return true;
+      if (issue.closed_at) {
+        return new Date(issue.closed_at).getTime() >= cutoffTime;
+      }
+      return false;
+    });
+
+    log(`listFilteredIssues returning ${recentIssues.length} recent issues (window: ${recentWindowHours}h)`);
+    return recentIssues;
   }
 
   log(`listFilteredIssues returning ${issues.length} issues (all)`);

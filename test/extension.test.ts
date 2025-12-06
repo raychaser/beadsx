@@ -420,6 +420,41 @@ test.describe('BeadsX Extension', () => {
     await page.waitForTimeout(2000);
   });
 
+  test('Filter: Recent filter shows open and recently closed issues', async () => {
+    // Verify we start with 3 open issues
+    await expect(getBeadsXTreeItems(page)).toHaveCount(3, { timeout: 10000 });
+
+    // Close an issue
+    execSync(`bd close ${testIssues.task.id} --reason "testing recent filter"`, {
+      cwd: workspacePath,
+      stdio: 'pipe',
+    });
+
+    // Refresh to pick up the status change
+    await refreshBeadsXPanel(page);
+
+    // Apply Recent filter
+    await executeFilterCommand(page);
+    await expect(page.locator('.quick-input-list-row').filter({ hasText: 'Recent Issues' })).toBeVisible();
+    await page.locator('.quick-input-list-row').filter({ hasText: 'Recent Issues' }).click();
+    await page.waitForTimeout(2000);
+
+    // Recently closed issue should still be visible (closed within 1 hour default window)
+    await expect(getBeadsXTreeItems(page)).toHaveCount(3, { timeout: 10000 });
+    await expect(getIssueById(page, testIssues.task.id)).toBeVisible();
+
+    // Reopen the issue for other tests
+    execSync(`bd update ${testIssues.task.id} --status open`, {
+      cwd: workspacePath,
+      stdio: 'pipe',
+    });
+
+    // Reset to All filter
+    await executeFilterCommand(page);
+    await page.locator('.quick-input-list-row').filter({ hasText: 'All Issues' }).click();
+    await page.waitForTimeout(2000);
+  });
+
   // Refresh tests
   test('Refresh: picks up externally added issues', async () => {
     // Ensure we're on All filter and have 3 base issues

@@ -264,13 +264,19 @@ export function activate(context: vscode.ExtensionContext) {
         label: currentFilter === 'ready' ? '$(check) Ready Issues' : 'Ready Issues',
         value: 'ready',
         description: currentFilter === 'ready' ? 'current' : undefined
+      },
+      {
+        label: currentFilter === 'recent' ? '$(check) Recent Issues' : 'Recent Issues',
+        value: 'recent',
+        description: currentFilter === 'recent' ? 'current' : 'Open + recently closed'
       }
     ];
 
     const filterNames: Record<FilterMode, string> = {
       'all': 'All Issues',
       'open': 'Open Issues',
-      'ready': 'Ready Issues'
+      'ready': 'Ready Issues',
+      'recent': 'Recent Issues'
     };
 
     const selected = await vscode.window.showQuickPick(options, {
@@ -291,6 +297,9 @@ export function activate(context: vscode.ExtensionContext) {
   const configChangeListener = vscode.workspace.onDidChangeConfiguration(e => {
     if (e.affectsConfiguration('beadsx.autoReloadInterval')) {
       beadsProvider.startAutoReload();
+    }
+    if (e.affectsConfiguration('beadsx.recentWindowHours') && beadsProvider.getFilter() === 'recent') {
+      beadsProvider.refresh();
     }
   });
 
