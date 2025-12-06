@@ -105,10 +105,12 @@ export async function exportIssuesWithDeps(workspaceRoot: string): Promise<Beads
       const line = lines[i];
       try {
         const issue = JSON.parse(line);
-        // Compute parentId from parent-child dependencies
+        // Compute parentId from dependencies (parent-child takes precedence, then blocks)
         if (issue.dependencies) {
           const parentDep = issue.dependencies.find(
             (dep: BeadsDependency) => dep.type === 'parent-child'
+          ) || issue.dependencies.find(
+            (dep: BeadsDependency) => dep.type === 'blocks'
           );
           if (parentDep) {
             issue.parentId = parentDep.depends_on_id;
