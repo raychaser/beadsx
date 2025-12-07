@@ -111,7 +111,6 @@
     "publish:vsce": "vsce publish",
     "publish:ovsx": "ovsx publish",
     "install-ext": "rm -f beadsx-*.vsix && vsce package --no-dependencies --allow-missing-repository && code --install-extension beadsx-*.vsix --force",
-    "install-ext-cursor": "rm -f beadsx-*.vsix && vsce package --no-dependencies --allow-missing-repository && cursor --install-extension beadsx-*.vsix --force",
     "test": "pnpm run bundle && playwright test",
     "test:headed": "pnpm run bundle && playwright test --headed",
     "test:integration": "tsc -p test/suite && vscode-test",

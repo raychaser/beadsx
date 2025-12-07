@@ -54,12 +54,6 @@ jobs:
             code --install-extension beadsx-${{ steps.version.outputs.VERSION }}.vsix
             ```
 
-            Or in Cursor:
-
-            ```bash
-            cursor --install-extension beadsx-${{ steps.version.outputs.VERSION }}.vsix
-            ```
-
       - name: Publish to VS Code Marketplace
         if: ${{ secrets.VSCE_PAT != '' }}
         run: pnpm exec vsce publish --pat ${{ secrets.VSCE_PAT }}
