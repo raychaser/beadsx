@@ -54,10 +54,19 @@ jobs:
             code --install-extension beadsx-${{ steps.version.outputs.VERSION }}.vsix
             ```
 
+      - name: Verify package
+        run: pnpm exec vsce ls
+
       - name: Publish to VS Code Marketplace
-        if: ${{ secrets.VSCE_PAT != '' }}
-        run: pnpm exec vsce publish --pat ${{ secrets.VSCE_PAT }}
+        if: ${{ secrets.VSCE_PAT }}
+        continue-on-error: true
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: pnpm exec vsce publish
 
       - name: Publish to Open VSX
-        if: ${{ secrets.OVSX_PAT != '' }}
-        run: pnpm exec ovsx publish --pat ${{ secrets.OVSX_PAT }}
+        if: ${{ secrets.OVSX_PAT }}
+        continue-on-error: true
+        env:
+          OVSX_TOKEN: ${{ secrets.OVSX_PAT }}
+        run: pnpm exec ovsx publish
