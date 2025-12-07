@@ -42,14 +42,31 @@ jobs:
           body: |
             ## Installation
 
+            **From Marketplace (recommended):**
+            - [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=raychaser.beadsx)
+            - [Open VSX Registry](https://open-vsx.org/extension/raychaser/beadsx)
+
+            **Manual installation:**
+
             Download the `.vsix` file and install it in VSCode:
 
             ```bash
             code --install-extension beadsx-${{ steps.version.outputs.VERSION }}.vsix
             ```
 
-            Or in Cursor:
+      - name: Verify package
+        run: pnpm exec vsce ls
 
-            ```bash
-            cursor --install-extension beadsx-${{ steps.version.outputs.VERSION }}.vsix
-            ```
+      - name: Publish to VS Code Marketplace
+        if: ${{ secrets.VSCE_PAT }}
+        continue-on-error: true
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: pnpm exec vsce publish
+
+      - name: Publish to Open VSX
+        if: ${{ secrets.OVSX_PAT }}
+        continue-on-error: true
+        env:
+          OVSX_TOKEN: ${{ secrets.OVSX_PAT }}
+        run: pnpm exec ovsx publish

@@ -1,6 +1,6 @@
 # BeadsX Extension
 
-A VSCode/Cursor extension that provides a panel for viewing and managing beads issue tracking state.
+A VSCode extension that provides a panel for viewing and managing beads issue tracking state.
 
 ## Features
 
@@ -27,23 +27,23 @@ pnpm install
 # Build and install extension
 pnpm install-ext
 
-# Reload Cursor/VSCode window (Cmd+Shift+P → "Developer: Reload Window")
+# Reload VSCode window (Cmd+Shift+P → "Developer: Reload Window")
 ```
 
 ### From VSIX
 
 ```bash
 pnpm package
-cursor --install-extension beadsx-*.vsix --force
+code --install-extension beadsx-*.vsix --force
 ```
 
 ## Configuration
 
 Access settings via: Settings → Extensions → BeadsX Extension
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `beads.autoReloadInterval` | `10` | Interval in seconds to automatically reload issues (0 to disable) |
+| Setting                    | Default | Description                                                       |
+| -------------------------- | ------- | ----------------------------------------------------------------- |
+| `beads.autoReloadInterval` | `10`    | Interval in seconds to automatically reload issues (0 to disable) |
 
 ## Usage
 
@@ -62,25 +62,6 @@ Access settings via: Settings → Extensions → BeadsX Extension
 - Epics and parent issues appear at the top level
 - Child tasks are nested underneath
 - Open issues start expanded, closed issues start collapsed
-
-## Development
-
-```bash
-# Compile TypeScript
-pnpm compile
-
-# Watch mode
-pnpm watch
-
-# Package extension
-pnpm package
-
-# Build and install
-pnpm install-ext
-
-# Lint
-pnpm lint
-```
 
 ## License
 
