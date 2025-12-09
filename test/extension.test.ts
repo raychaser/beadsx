@@ -159,15 +159,21 @@ async function executeFilterCommand(p: Page): Promise<void> {
   await p.keyboard.press(`${modifier}+Shift+P`);
   await p.locator('.quick-input-widget').waitFor({ state: 'visible', timeout: 5000 });
   await p.keyboard.type('Filter Issues');
-  await p.waitForTimeout(500);
+
+  // Wait for command to appear in list before pressing Enter
+  await p
+    .locator('.quick-input-list-row')
+    .filter({ hasText: 'Filter Issues' })
+    .waitFor({ state: 'visible', timeout: 5000 });
+
   await p.keyboard.press('Enter');
 
-  // Wait for the filter quick pick to appear with options
-  await p.waitForTimeout(500);
+  // Wait for filter quick pick to appear (command palette closes, filter picker opens)
+  // Poll for the filter options to appear with increased timeout
   await p
     .locator('.quick-input-list-row')
     .filter({ hasText: 'All Issues' })
-    .waitFor({ state: 'visible', timeout: 5000 });
+    .waitFor({ state: 'visible', timeout: 10000 });
 }
 
 /**
