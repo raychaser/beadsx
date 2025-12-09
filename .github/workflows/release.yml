@@ -58,23 +58,21 @@ jobs:
         run: pnpm exec vsce ls
 
       - name: Publish to VS Code Marketplace
-        continue-on-error: true
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
-          if [ -n "$VSCE_PAT" ]; then
-            pnpm exec vsce publish
-          else
-            echo "VSCE_PAT not set, skipping marketplace publish"
+          if [ -z "$VSCE_PAT" ]; then
+            echo "::error::VSCE_PAT secret is not set"
+            exit 1
           fi
+          pnpm exec vsce publish
 
       - name: Publish to Open VSX Registry
-        continue-on-error: true
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: |
-          if [ -n "$OVSX_PAT" ]; then
-            pnpm exec ovsx publish beadsx-*.vsix -p "$OVSX_PAT"
-          else
-            echo "OVSX_PAT not set, skipping Open VSX publish"
+          if [ -z "$OVSX_PAT" ]; then
+            echo "::error::OVSX_PAT secret is not set"
+            exit 1
           fi
+          pnpm exec ovsx publish beadsx-*.vsix -p "$OVSX_PAT"
