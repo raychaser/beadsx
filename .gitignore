@@ -1,0 +1,34 @@
+out/
+node_modules/
+*.vsix
+.vscode-test/
+playwright-report/
+test-results/
+.claude/settings.local.json
+.beads/*.sock*
+.DS_Store
+daemon.lock
+daemon.log
+*.code-workspace
+.claude-trace
+
+# Compiled TypeScript config files
+vitest.config.js
+vitest.config.js.map
+playwright.config.js
+playwright.config.js.map
+
+# Compiled test files
+test/**/*.js
+test/**/*.js.map
+
+# Beads local state
+.beads/.local_version
+
+# Beads runtime files
+.beads/*.db
+.beads/*.db-shm
+.beads/*.db-wal
+.beads/daemon.*
+.beads/*.left.*
+.beads/deletions.jsonl

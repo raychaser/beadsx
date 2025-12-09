@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Package extension
+        run: pnpm run package
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: beadsx-*.vsix
+          generate_release_notes: true
+          body: |
+            ## Installation
+
+            **From Marketplace (recommended):**
+            - [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=raychaser.beadsx)
+            - [Open VSX Registry](https://open-vsx.org/extension/raychaser/beadsx)
+
+            **Manual installation:**
+
+            Download the `.vsix` file and install it in VSCode:
+
+            ```bash
+            code --install-extension beadsx-${{ steps.version.outputs.VERSION }}.vsix
+            ```
+
+      - name: Verify package
+        run: pnpm exec vsce ls
+
+      - name: Publish to VS Code Marketplace
+        continue-on-error: true
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -n "$VSCE_PAT" ]; then
+            pnpm exec vsce publish
+          else
+            echo "VSCE_PAT not set, skipping marketplace publish"
+          fi
+
+      - name: Publish to Open VSX Registry
+        continue-on-error: true
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          if [ -n "$OVSX_PAT" ]; then
+            pnpm exec ovsx publish beadsx-*.vsix -p "$OVSX_PAT"
+          else
+            echo "OVSX_PAT not set, skipping Open VSX publish"
+          fi

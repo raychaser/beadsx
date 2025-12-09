@@ -1,0 +1,142 @@
+{
+  "name": "beadsx",
+  "displayName": "BeadsX Extension",
+  "description": "VSCode panel for viewing beads issue tracking state",
+  "version": "0.2.2",
+  "publisher": "raychaser",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/raychaser/beadsx.git"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "beadsx",
+          "title": "Beads",
+          "icon": "$(checklist)"
+        }
+      ]
+    },
+    "views": {
+      "beadsx": [
+        {
+          "id": "beadsxIssues",
+          "name": "Beads",
+          "icon": "$(checklist)"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "beadsx.refresh",
+        "title": "Refresh Issues",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "beadsx.filter",
+        "title": "Filter Issues",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "beadsx.showDetail",
+        "title": "Show Issue Detail"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "beadsx.filter",
+          "when": "view == beadsxIssues",
+          "group": "navigation"
+        },
+        {
+          "command": "beadsx.refresh",
+          "when": "view == beadsxIssues",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "BeadsX Extension",
+      "properties": {
+        "beadsx.autoReloadInterval": {
+          "type": "number",
+          "default": 10,
+          "minimum": 0,
+          "description": "Interval in seconds to automatically reload issues (0 to disable)"
+        },
+        "beadsx.commandPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the bd command (leave empty to use PATH)"
+        },
+        "beadsx.autoExpandOpen": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically expand open/in-progress issues to show children"
+        },
+        "beadsx.shortIds": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show shortened issue IDs without prefix (e.g., '123' instead of 'beadsx-123')"
+        },
+        "beadsx.recentWindowMinutes": {
+          "type": "number",
+          "default": 60,
+          "minimum": 1,
+          "maximum": 10080,
+          "description": "Time window in minutes for 'Recent Issues' filter to include closed issues (default: 60 = 1 hour)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run bundle",
+    "compile": "tsc -p ./",
+    "bundle": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --minify",
+    "watch": "tsc -watch -p ./",
+    "lint": "biome check src",
+    "lint:fix": "biome check --write src",
+    "format": "biome format --write src",
+    "package": "vsce package --no-dependencies --allow-missing-repository",
+    "publish:vsce": "echo 'Requires VSCE_PAT env var' && vsce publish",
+    "publish:ovsx": "echo 'Requires OVSX_TOKEN env var' && ovsx publish",
+    "install-ext": "rm -f beadsx-*.vsix && vsce package --no-dependencies --allow-missing-repository && code --install-extension beadsx-*.vsix --force",
+    "test": "pnpm run bundle && playwright test",
+    "test:headed": "pnpm run bundle && playwright test --headed",
+    "test:integration": "tsc -p test/suite && vscode-test",
+    "pretest:integration": "pnpm run bundle",
+    "test:unit": "vitest run",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.8",
+    "@playwright/test": "^1.57.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.7.1",
+    "esbuild": "^0.27.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
+    "ovsx": "^0.10.7",
+    "typescript": "^5.3.2",
+    "vitest": "^4.0.15"
+  },
+  "lint-staged": {
+    "*.ts": [
+      "biome check --write"
+    ]
+  }
+}

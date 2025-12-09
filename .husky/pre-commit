@@ -1,0 +1,17 @@
+#!/bin/sh
+set -e
+
+# Pre-commit hook: Run lint-staged (Biome on staged files) + unit tests
+
+# Verify required tools are available
+command -v pnpm >/dev/null 2>&1 || { echo "Error: pnpm is required but not found. Run 'npm install -g pnpm'."; exit 1; }
+
+echo "Running pre-commit checks..."
+
+# Run lint-staged (formats and lints only staged files)
+pnpm exec lint-staged || { echo "Lint-staged failed. Please fix errors before committing."; exit 1; }
+
+# Run unit tests
+pnpm run test:unit || { echo "Unit tests failed. Please fix tests before committing."; exit 1; }
+
+echo "Pre-commit checks passed!"
