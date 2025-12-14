@@ -169,7 +169,6 @@ async function executeFilterCommand(p: Page): Promise<void> {
   await p.keyboard.press('Enter');
 
   // Wait for filter quick pick to appear (command palette closes, filter picker opens)
-  // Poll for the filter options to appear with increased timeout
   await p
     .locator('.quick-input-list-row')
     .filter({ hasText: 'All Issues' })
@@ -181,8 +180,18 @@ async function executeFilterCommand(p: Page): Promise<void> {
  */
 async function refreshBeadsXPanel(p: Page): Promise<void> {
   await executeCommand(p, 'BeadsX: Refresh Issues');
-  // Wait for tree to refresh - the command triggers a reload
-  await p.waitForTimeout(3000);
+
+  // Wait for command to trigger refresh
+  await p.waitForTimeout(200);
+
+  // Wait for tree to stabilize after refresh
+  // The tree container should be visible and contain either items or be empty
+  const treeContainer = p.locator('[id="workbench.view.extension.beadsx"]');
+  await treeContainer.waitFor({ state: 'visible', timeout: 5000 });
+
+  // Give tree time to complete render and data reload
+  // Reduced from 3s to 1.5s - still accounts for async operations but faster
+  await p.waitForTimeout(1500);
 }
 
 // ============================================
