@@ -2,7 +2,7 @@
   "name": "beadsx",
   "displayName": "BeadsX Extension",
   "description": "VSCode panel for viewing beads issue tracking state",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "publisher": "raychaser",
   "repository": {
     "type": "git",

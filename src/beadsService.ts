@@ -1,9 +1,20 @@
 import { execFile } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { promisify } from 'node:util';
 import * as vscode from 'vscode';
 import { DEFAULT_RECENT_WINDOW_MINUTES, validateRecentWindowMinutes } from './utils';
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * Check if beads is initialized in the given workspace
+ * Returns true if .beads/ directory exists
+ */
+export function isBeadsInitialized(workspaceRoot: string): boolean {
+  const beadsDir = path.join(workspaceRoot, '.beads');
+  return fs.existsSync(beadsDir);
+}
 
 // Module-level output channel reference for logging
 let outputChannel: vscode.OutputChannel | undefined;
@@ -49,6 +60,12 @@ export interface BeadsIssue {
 }
 
 export async function listReadyIssues(workspaceRoot: string): Promise<BeadsIssue[]> {
+  // Skip if beads is not initialized in this workspace
+  if (!isBeadsInitialized(workspaceRoot)) {
+    log('Beads not initialized in workspace, skipping bd ready');
+    return [];
+  }
+
   const bdCmd = getBdCommand();
 
   // Execute bd command - separate try/catch for accurate error messaging
@@ -103,6 +120,12 @@ export async function listReadyIssues(workspaceRoot: string): Promise<BeadsIssue
 export type FilterMode = 'all' | 'open' | 'ready' | 'recent';
 
 export async function exportIssuesWithDeps(workspaceRoot: string): Promise<BeadsIssue[]> {
+  // Skip if beads is not initialized in this workspace
+  if (!isBeadsInitialized(workspaceRoot)) {
+    log('Beads not initialized in workspace, skipping bd export');
+    return [];
+  }
+
   const bdCmd = getBdCommand();
   log(`exportIssuesWithDeps called with workspaceRoot: ${workspaceRoot}, bdCmd: ${bdCmd}`);
 
