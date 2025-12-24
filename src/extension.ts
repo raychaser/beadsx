@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 
 import {
   type BeadsIssue,
+  clearBeadsInitializedCache,
   type FilterMode,
   getAllAncestors,
   getChildren,
@@ -9,27 +10,28 @@ import {
 } from './beadsService';
 import { BeadsTreeDataProvider } from './beadsTreeDataProvider';
 
-// Track last click for double-click detection
-let lastClickedItem = { id: '', timestamp: 0 };
+// Double-click detection threshold
 const DOUBLE_CLICK_THRESHOLD = 300; // milliseconds
 
+// HTML escaping utility (module-level to avoid recreation per call)
+const escapeHtml = (str: string) =>
+  str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
+// Date formatting for detail view (module-level to avoid recreation per call)
+const formatDetailDate = (dateStr: string) => {
+  try {
+    return new Date(dateStr).toLocaleString();
+  } catch {
+    return dateStr;
+  }
+};
+
 function getDetailHtml(issue: BeadsIssue, ancestors: BeadsIssue[], children: BeadsIssue[]): string {
-  const escapeHtml = (str: string) =>
-    str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-
-  const formatDate = (dateStr: string) => {
-    try {
-      return new Date(dateStr).toLocaleString();
-    } catch {
-      return dateStr;
-    }
-  };
-
   // Build breadcrumbs HTML
   const breadcrumbsHtml =
     ancestors.length > 0
@@ -283,16 +285,16 @@ function getDetailHtml(issue: BeadsIssue, ancestors: BeadsIssue[], children: Bea
     <div class="metadata-value">${issue.assignee ? escapeHtml(issue.assignee) : '<em>Unassigned</em>'}</div>
 
     <div class="metadata-label">Created</div>
-    <div class="metadata-value">${formatDate(issue.created_at)}</div>
+    <div class="metadata-value">${formatDetailDate(issue.created_at)}</div>
 
     <div class="metadata-label">Updated</div>
-    <div class="metadata-value">${formatDate(issue.updated_at)}</div>
+    <div class="metadata-value">${formatDetailDate(issue.updated_at)}</div>
 
     ${
       issue.closed_at
         ? `
     <div class="metadata-label">Closed</div>
-    <div class="metadata-value">${formatDate(issue.closed_at)}</div>
+    <div class="metadata-value">${formatDetailDate(issue.closed_at)}</div>
     `
         : ''
     }
@@ -341,13 +343,17 @@ function getDetailHtml(issue: BeadsIssue, ancestors: BeadsIssue[], children: Bea
 </html>`;
 }
 
-// Create output channel for logging
-const outputChannel = vscode.window.createOutputChannel('BeadsX Extension');
-
 export function activate(context: vscode.ExtensionContext) {
+  // Create output channel for logging (inside activate for proper lifecycle)
+  const outputChannel = vscode.window.createOutputChannel('BeadsX Extension');
+  context.subscriptions.push(outputChannel);
+
   outputChannel.appendLine('Beads extension activating...');
   setOutputChannel(outputChannel);
   const beadsProvider = new BeadsTreeDataProvider(context, outputChannel);
+
+  // Track last click for double-click detection (scoped to activation)
+  let lastClickedItem = { id: '', timestamp: 0 };
 
   const treeView = vscode.window.createTreeView('beadsxIssues', {
     treeDataProvider: beadsProvider,
@@ -379,6 +385,7 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   const refreshCommand = vscode.commands.registerCommand('beadsx.refresh', () => {
+    clearBeadsInitializedCache(); // Re-check .beads/ directory on manual refresh
     beadsProvider.refresh();
   });
 
@@ -405,7 +412,7 @@ export function activate(context: vscode.ExtensionContext) {
           vscode.ViewColumn.One,
           {
             enableScripts: true,
-            retainContextWhenHidden: true,
+            // Note: retainContextWhenHidden removed - not needed for static content
           },
         );
 
@@ -507,6 +514,10 @@ export function activate(context: vscode.ExtensionContext) {
   const configChangeListener = vscode.workspace.onDidChangeConfiguration((e) => {
     if (e.affectsConfiguration('beadsx.autoReloadInterval')) {
       beadsProvider.startAutoReload();
+    }
+    // Refresh cached config when any beadsx settings change
+    if (e.affectsConfiguration('beadsx')) {
+      beadsProvider.refreshConfig();
     }
     if (
       e.affectsConfiguration('beadsx.recentWindowMinutes') &&

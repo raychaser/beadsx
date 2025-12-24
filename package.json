@@ -73,7 +73,8 @@
           "type": "number",
           "default": 10,
           "minimum": 0,
-          "description": "Interval in seconds to automatically reload issues (0 to disable)"
+          "maximum": 3600,
+          "description": "Interval in seconds to automatically reload issues (0 to disable, max 3600 = 1 hour)"
         },
         "beadsx.commandPath": {
           "type": "string",

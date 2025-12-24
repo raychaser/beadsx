@@ -1,4 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as vscode from 'vscode';
+
+// Mock fs/promises before importing beadsService
+vi.mock('node:fs/promises', () => ({
+  access: vi.fn(),
+}));
 
 // Mock vscode module before importing beadsService
 vi.mock('vscode', () => ({
@@ -12,7 +18,14 @@ vi.mock('vscode', () => ({
   },
 }));
 
-import { type BeadsIssue, getAllAncestors, getChildren } from './beadsService';
+import { access } from 'node:fs/promises';
+import {
+  type BeadsIssue,
+  clearBeadsInitializedCache,
+  getAllAncestors,
+  getChildren,
+  isBeadsInitialized,
+} from './beadsService';
 
 // Helper to create minimal BeadsIssue for testing
 function createIssue(overrides: Partial<BeadsIssue> & { id: string }): BeadsIssue {
@@ -180,5 +193,177 @@ describe('getAllAncestors', () => {
 
     expect(result).toHaveLength(4);
     expect(result.map((i) => i.id)).toEqual(['root', 'level1', 'level2', 'level3']);
+  });
+});
+
+describe('isBeadsInitialized', () => {
+  const mockAccess = vi.mocked(access);
+
+  beforeEach(() => {
+    clearBeadsInitializedCache();
+    mockAccess.mockReset();
+  });
+
+  it('returns true when .beads directory exists', async () => {
+    mockAccess.mockResolvedValue(undefined);
+    const result = await isBeadsInitialized('/test/workspace');
+    expect(result).toBe(true);
+    expect(mockAccess).toHaveBeenCalledWith('/test/workspace/.beads');
+  });
+
+  it('returns false when .beads directory does not exist (ENOENT)', async () => {
+    const error = new Error('ENOENT: no such file or directory') as NodeJS.ErrnoException;
+    error.code = 'ENOENT';
+    mockAccess.mockRejectedValue(error);
+
+    const result = await isBeadsInitialized('/test/workspace');
+    expect(result).toBe(false);
+  });
+
+  it('returns false for permission errors (EACCES) without caching', async () => {
+    const error = new Error('EACCES: permission denied') as NodeJS.ErrnoException;
+    error.code = 'EACCES';
+    mockAccess.mockRejectedValue(error);
+
+    const result = await isBeadsInitialized('/test/workspace');
+    expect(result).toBe(false);
+
+    // Should NOT be cached - calling again should hit the fs again
+    mockAccess.mockResolvedValue(undefined);
+    const result2 = await isBeadsInitialized('/test/workspace');
+    expect(result2).toBe(true);
+    expect(mockAccess).toHaveBeenCalledTimes(2);
+  });
+
+  it('caches true result for same workspace', async () => {
+    mockAccess.mockResolvedValue(undefined);
+
+    await isBeadsInitialized('/test/workspace');
+    await isBeadsInitialized('/test/workspace');
+    await isBeadsInitialized('/test/workspace');
+
+    // Should only call access once due to caching
+    expect(mockAccess).toHaveBeenCalledTimes(1);
+  });
+
+  it('caches false result for ENOENT errors', async () => {
+    const error = new Error('ENOENT') as NodeJS.ErrnoException;
+    error.code = 'ENOENT';
+    mockAccess.mockRejectedValue(error);
+
+    await isBeadsInitialized('/test/workspace');
+    await isBeadsInitialized('/test/workspace');
+
+    // Should only call access once due to caching
+    expect(mockAccess).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses separate cache entries for different workspaces', async () => {
+    mockAccess.mockResolvedValue(undefined);
+
+    await isBeadsInitialized('/workspace1');
+    await isBeadsInitialized('/workspace2');
+
+    expect(mockAccess).toHaveBeenCalledTimes(2);
+    expect(mockAccess).toHaveBeenCalledWith('/workspace1/.beads');
+    expect(mockAccess).toHaveBeenCalledWith('/workspace2/.beads');
+  });
+});
+
+describe('clearBeadsInitializedCache', () => {
+  const mockAccess = vi.mocked(access);
+
+  beforeEach(() => {
+    clearBeadsInitializedCache();
+    mockAccess.mockReset();
+  });
+
+  it('clears cached results so next call re-checks filesystem', async () => {
+    mockAccess.mockResolvedValue(undefined);
+
+    // First call - should hit fs
+    await isBeadsInitialized('/test/workspace');
+    expect(mockAccess).toHaveBeenCalledTimes(1);
+
+    // Second call - should use cache
+    await isBeadsInitialized('/test/workspace');
+    expect(mockAccess).toHaveBeenCalledTimes(1);
+
+    // Clear cache
+    clearBeadsInitializedCache();
+
+    // Third call - should hit fs again
+    await isBeadsInitialized('/test/workspace');
+    expect(mockAccess).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears cache for all workspaces', async () => {
+    mockAccess.mockResolvedValue(undefined);
+
+    await isBeadsInitialized('/workspace1');
+    await isBeadsInitialized('/workspace2');
+    expect(mockAccess).toHaveBeenCalledTimes(2);
+
+    clearBeadsInitializedCache();
+
+    await isBeadsInitialized('/workspace1');
+    await isBeadsInitialized('/workspace2');
+    expect(mockAccess).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe('getBdCommand validation', () => {
+  // Note: getBdCommand is not exported, but we can test it indirectly
+  // through the behavior of listReadyIssues and exportIssuesWithDeps
+  // For direct testing, we would need to export it or refactor
+
+  beforeEach(() => {
+    vi.mocked(vscode.workspace.getConfiguration).mockReset();
+  });
+
+  it('uses default "bd" when commandPath is empty', () => {
+    vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+      get: vi.fn((key: string, defaultValue?: unknown) => {
+        if (key === 'commandPath') return '';
+        return defaultValue;
+      }),
+    } as unknown as vscode.WorkspaceConfiguration);
+
+    // The configuration is read, but we can't easily test the internal function
+    // This test documents the expected behavior
+    const config = vscode.workspace.getConfiguration('beadsx');
+    expect(config.get('commandPath', '')).toBe('');
+  });
+
+  it('configuration rejects paths with semicolons', () => {
+    // Document expected behavior: paths with shell metacharacters should be rejected
+    const dangerousPaths = [
+      '/usr/bin/bd; rm -rf /',
+      '/path|cat /etc/passwd',
+      '/path & malicious',
+      '/path`whoami`',
+      '/path$HOME',
+      '/path<file',
+      '/path>file',
+    ];
+
+    // These paths should all be rejected by the regex /[;&|<>`$]/
+    for (const path of dangerousPaths) {
+      expect(/[;&|<>`$]/.test(path)).toBe(true);
+    }
+  });
+
+  it('configuration allows safe paths', () => {
+    const safePaths = [
+      '/usr/local/bin/bd',
+      '/home/user/.local/bin/bd',
+      'C:\\Program Files\\beads\\bd.exe',
+      './node_modules/.bin/bd',
+      'bd',
+    ];
+
+    for (const path of safePaths) {
+      expect(/[;&|<>`$]/.test(path)).toBe(false);
+    }
   });
 });

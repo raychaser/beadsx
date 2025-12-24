@@ -4,6 +4,12 @@ import { formatTimeAgo, sortIssues } from './utils';
 
 export { BeadsIssue };
 
+// Configuration cache interface
+interface CachedConfig {
+  autoExpandOpen: boolean;
+  shortIds: boolean;
+}
+
 export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue> {
   private _onDidChangeTreeData: vscode.EventEmitter<BeadsIssue | undefined | null | void> =
     new vscode.EventEmitter<BeadsIssue | undefined | null | void>();
@@ -18,6 +24,8 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
   private loadingPromise: Promise<BeadsIssue[]> | null = null;
   private reloadInterval: NodeJS.Timeout | undefined;
   private outputChannel: vscode.OutputChannel | undefined;
+  // Cached configuration to avoid repeated getConfiguration calls
+  private cachedConfig: CachedConfig = { autoExpandOpen: true, shortIds: false };
 
   constructor(context?: vscode.ExtensionContext, outputChannel?: vscode.OutputChannel) {
     this.workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
@@ -36,6 +44,18 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
         this.filterMode = savedFilter;
       }
     }
+
+    // Initialize cached configuration
+    this.refreshConfig();
+  }
+
+  // Refresh cached configuration from VS Code settings
+  refreshConfig(): void {
+    const config = vscode.workspace.getConfiguration('beadsx');
+    this.cachedConfig = {
+      autoExpandOpen: config.get<boolean>('autoExpandOpen', true),
+      shortIds: config.get<boolean>('shortIds', false),
+    };
   }
 
   private log(message: string): void {
@@ -80,10 +100,7 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
 
   // Get issues that should be auto-expanded (open/in_progress with children)
   getExpandableIssues(): BeadsIssue[] {
-    const config = vscode.workspace.getConfiguration('beadsx');
-    const autoExpand = config.get<boolean>('autoExpandOpen', true);
-
-    if (!autoExpand) {
+    if (!this.cachedConfig.autoExpandOpen) {
       return [];
     }
 
@@ -98,7 +115,13 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
   startAutoReload(): void {
     this.stopAutoReload();
     const config = vscode.workspace.getConfiguration('beadsx');
-    const intervalSeconds = config.get<number>('autoReloadInterval', 10);
+    const rawInterval = config.get<number>('autoReloadInterval', 10);
+    // Clamp to reasonable bounds: 0 (disabled) or 1-3600 seconds (1 hour max)
+    const intervalSeconds = rawInterval <= 0 ? 0 : Math.min(Math.max(rawInterval, 1), 3600);
+
+    if (rawInterval !== intervalSeconds && rawInterval > 0) {
+      this.log(`Warning: autoReloadInterval ${rawInterval}s clamped to ${intervalSeconds}s`);
+    }
 
     this.log(`startAutoReload with interval: ${intervalSeconds}s`);
 
@@ -120,6 +143,8 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
 
   dispose(): void {
     this.stopAutoReload();
+    this._onDidChangeTreeData.dispose();
+    this._onDidLoadData.dispose();
   }
 
   private hasChildren(issueId: string): boolean {
@@ -132,16 +157,15 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     // Determine if this issue has children
     const hasChildIssues = this.hasChildren(element.id);
 
-    // Check config for auto-expand setting
-    const config = vscode.workspace.getConfiguration('beadsx');
-    const autoExpand = config.get<boolean>('autoExpandOpen', true);
+    // Use cached config for auto-expand setting
+    const { autoExpandOpen, shortIds } = this.cachedConfig;
 
     // Start expanded if issue is open/in_progress and autoExpand is enabled, collapsed if closed
     let collapsibleState = vscode.TreeItemCollapsibleState.None;
     if (hasChildIssues) {
       if (element.status === 'closed') {
         collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
-      } else if (autoExpand) {
+      } else if (autoExpandOpen) {
         collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
       } else {
         collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
@@ -149,7 +173,7 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     }
 
     this.log(
-      `getTreeItem ${element.id}: hasChildren=${hasChildIssues}, autoExpand=${autoExpand}, state=${collapsibleState === vscode.TreeItemCollapsibleState.Expanded ? 'Expanded' : collapsibleState === vscode.TreeItemCollapsibleState.Collapsed ? 'Collapsed' : 'None'}`,
+      `getTreeItem ${element.id}: hasChildren=${hasChildIssues}, autoExpand=${autoExpandOpen}, state=${collapsibleState === vscode.TreeItemCollapsibleState.Expanded ? 'Expanded' : collapsibleState === vscode.TreeItemCollapsibleState.Collapsed ? 'Collapsed' : 'None'}`,
     );
 
     // Status symbol
@@ -169,8 +193,7 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
         break;
     }
 
-    // Check if short IDs are enabled
-    const shortIds = config.get<boolean>('shortIds', false);
+    // Use cached shortIds setting
     let displayId = element.id;
     if (shortIds) {
       // Extract just the numeric/alphanumeric part after the last hyphen
