@@ -61,8 +61,8 @@ describe('formatTimeAgo', () => {
 describe('sortIssues', () => {
   it('does not mutate the input array', () => {
     const original = [
-      { status: 'closed', closed_at: '2025-01-15T10:00:00.000Z' },
-      { status: 'open', closed_at: null },
+      { status: 'closed', priority: 2, closed_at: '2025-01-15T10:00:00.000Z' },
+      { status: 'open', priority: 2, closed_at: null },
     ];
     const originalCopy = [...original];
     sortIssues(original);
@@ -71,9 +71,9 @@ describe('sortIssues', () => {
 
   it('places open issues before closed issues', () => {
     const issues = [
-      { status: 'closed', closed_at: '2025-01-15T10:00:00.000Z' },
-      { status: 'open', closed_at: null },
-      { status: 'in_progress', closed_at: null },
+      { status: 'closed', priority: 2, closed_at: '2025-01-15T10:00:00.000Z' },
+      { status: 'open', priority: 2, closed_at: null },
+      { status: 'in_progress', priority: 2, closed_at: null },
     ];
     const sorted = sortIssues(issues);
     expect(sorted[0].status).toBe('open');
@@ -83,9 +83,9 @@ describe('sortIssues', () => {
 
   it('sorts closed issues by recency (most recent first)', () => {
     const issues = [
-      { status: 'closed', closed_at: '2025-01-10T10:00:00.000Z' }, // oldest
-      { status: 'closed', closed_at: '2025-01-15T10:00:00.000Z' }, // newest
-      { status: 'closed', closed_at: '2025-01-12T10:00:00.000Z' }, // middle
+      { status: 'closed', priority: 2, closed_at: '2025-01-10T10:00:00.000Z' }, // oldest
+      { status: 'closed', priority: 2, closed_at: '2025-01-15T10:00:00.000Z' }, // newest
+      { status: 'closed', priority: 2, closed_at: '2025-01-12T10:00:00.000Z' }, // middle
     ];
     const sorted = sortIssues(issues);
     expect(sorted[0].closed_at).toBe('2025-01-15T10:00:00.000Z');
@@ -95,8 +95,8 @@ describe('sortIssues', () => {
 
   it('treats null closed_at as oldest', () => {
     const issues = [
-      { status: 'closed', closed_at: null },
-      { status: 'closed', closed_at: '2025-01-15T10:00:00.000Z' },
+      { status: 'closed', priority: 2, closed_at: null },
+      { status: 'closed', priority: 2, closed_at: '2025-01-15T10:00:00.000Z' },
     ];
     const sorted = sortIssues(issues);
     expect(sorted[0].closed_at).toBe('2025-01-15T10:00:00.000Z');
@@ -105,23 +105,23 @@ describe('sortIssues', () => {
 
   it('treats invalid date as oldest', () => {
     const issues = [
-      { status: 'closed', closed_at: 'invalid-date' },
-      { status: 'closed', closed_at: '2025-01-15T10:00:00.000Z' },
+      { status: 'closed', priority: 2, closed_at: 'invalid-date' },
+      { status: 'closed', priority: 2, closed_at: '2025-01-15T10:00:00.000Z' },
     ];
     const sorted = sortIssues(issues);
     expect(sorted[0].closed_at).toBe('2025-01-15T10:00:00.000Z');
     expect(sorted[1].closed_at).toBe('invalid-date');
   });
 
-  it('maintains relative order of open issues', () => {
+  it('sorts open issues by priority (lowest number first)', () => {
     const issues = [
-      { status: 'open', closed_at: null, id: 'a' },
-      { status: 'open', closed_at: null, id: 'b' },
-      { status: 'open', closed_at: null, id: 'c' },
+      { status: 'open', priority: 3, closed_at: null, id: 'low' },
+      { status: 'open', priority: 0, closed_at: null, id: 'critical' },
+      { status: 'open', priority: 2, closed_at: null, id: 'medium' },
     ];
     const sorted = sortIssues(issues);
     // @ts-expect-error - id is for testing
-    expect(sorted.map((i) => i.id)).toEqual(['a', 'b', 'c']);
+    expect(sorted.map((i) => i.id)).toEqual(['critical', 'medium', 'low']);
   });
 
   it('handles empty array', () => {
@@ -130,7 +130,7 @@ describe('sortIssues', () => {
   });
 
   it('handles single element array', () => {
-    const issues = [{ status: 'open', closed_at: null }];
+    const issues = [{ status: 'open', priority: 2, closed_at: null }];
     const sorted = sortIssues(issues);
     expect(sorted).toHaveLength(1);
     expect(sorted[0].status).toBe('open');
