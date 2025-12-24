@@ -1,13 +1,19 @@
 import * as vscode from 'vscode';
 
-import { type BeadsIssue, type FilterMode, setOutputChannel } from './beadsService';
+import {
+  type BeadsIssue,
+  type FilterMode,
+  getAllAncestors,
+  getChildren,
+  setOutputChannel,
+} from './beadsService';
 import { BeadsTreeDataProvider } from './beadsTreeDataProvider';
 
 // Track last click for double-click detection
 let lastClickedItem = { id: '', timestamp: 0 };
 const DOUBLE_CLICK_THRESHOLD = 300; // milliseconds
 
-function getDetailHtml(issue: BeadsIssue): string {
+function getDetailHtml(issue: BeadsIssue, ancestors: BeadsIssue[], children: BeadsIssue[]): string {
   const escapeHtml = (str: string) =>
     str
       .replace(/&/g, '&amp;')
@@ -24,11 +30,56 @@ function getDetailHtml(issue: BeadsIssue): string {
     }
   };
 
+  // Build breadcrumbs HTML
+  const breadcrumbsHtml =
+    ancestors.length > 0
+      ? `<nav class="breadcrumbs">
+      ${ancestors.map((a) => `<span class="breadcrumb-item" data-id="${escapeHtml(a.id)}">${escapeHtml(a.title)}</span>`).join('<span class="breadcrumb-separator">›</span>')}
+      <span class="breadcrumb-separator">›</span>
+      <span class="breadcrumb-current">${escapeHtml(issue.title)}</span>
+    </nav>`
+      : '';
+
+  // Build children HTML grouped by status
+  const openChildren = children.filter((c) => c.status !== 'closed');
+  const closedChildren = children.filter((c) => c.status === 'closed');
+
+  const renderChildItem = (child: BeadsIssue) => `
+    <li class="child-item" data-id="${escapeHtml(child.id)}">
+      <span class="child-status child-status-${child.status}">${child.status === 'in_progress' ? 'IN PROG' : child.status.toUpperCase()}</span>
+      <span class="child-title">${escapeHtml(child.title)}</span>
+      <span class="child-id">${escapeHtml(child.id)}</span>
+    </li>`;
+
+  const childrenHtml =
+    children.length > 0
+      ? `<div class="children-section">
+      <div class="section-title">Children (${children.length})</div>
+      ${
+        openChildren.length > 0
+          ? `<div class="children-group">
+        <div class="children-group-title">Open (${openChildren.length})</div>
+        <ul class="children-list">${openChildren.map(renderChildItem).join('')}</ul>
+      </div>`
+          : ''
+      }
+      ${
+        closedChildren.length > 0
+          ? `<div class="children-group">
+        <div class="children-group-title">Closed (${closedChildren.length})</div>
+        <ul class="children-list">${closedChildren.map(renderChildItem).join('')}</ul>
+      </div>`
+          : ''
+      }
+    </div>`
+      : '';
+
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';" />
   <title>${escapeHtml(issue.id)}</title>
   <style>
     body {
@@ -37,6 +88,25 @@ function getDetailHtml(issue: BeadsIssue): string {
       line-height: 1.6;
       color: var(--vscode-foreground);
       background-color: var(--vscode-editor-background);
+    }
+    .breadcrumbs {
+      margin-bottom: 16px;
+      font-size: 13px;
+      color: var(--vscode-descriptionForeground);
+    }
+    .breadcrumb-item {
+      cursor: pointer;
+      color: var(--vscode-textLink-foreground);
+    }
+    .breadcrumb-item:hover {
+      text-decoration: underline;
+    }
+    .breadcrumb-separator {
+      margin: 0 6px;
+      color: var(--vscode-descriptionForeground);
+    }
+    .breadcrumb-current {
+      color: var(--vscode-foreground);
     }
     .issue-header {
       border-bottom: 1px solid var(--vscode-panel-border);
@@ -129,9 +199,71 @@ function getDetailHtml(issue: BeadsIssue): string {
       background-color: var(--vscode-badge-background);
       color: var(--vscode-badge-foreground);
     }
+    .children-section {
+      margin-top: 20px;
+    }
+    .children-group {
+      margin-bottom: 12px;
+    }
+    .children-group-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--vscode-descriptionForeground);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+    .children-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .child-item {
+      padding: 6px 10px;
+      margin: 2px 0;
+      background-color: var(--vscode-input-background);
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .child-item:hover {
+      background-color: var(--vscode-list-hoverBackground);
+    }
+    .child-status {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 1px 4px;
+      border-radius: 2px;
+    }
+    .child-status-open {
+      background-color: var(--vscode-charts-green);
+      color: var(--vscode-editor-background);
+    }
+    .child-status-in_progress {
+      background-color: var(--vscode-charts-blue);
+      color: var(--vscode-editor-background);
+    }
+    .child-status-blocked {
+      background-color: var(--vscode-charts-red);
+      color: var(--vscode-editor-background);
+    }
+    .child-status-closed {
+      background-color: var(--vscode-descriptionForeground);
+      color: var(--vscode-editor-background);
+    }
+    .child-title {
+      flex: 1;
+      color: var(--vscode-textLink-foreground);
+    }
+    .child-id {
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground);
+    }
   </style>
 </head>
 <body>
+  ${breadcrumbsHtml}
   <div class="issue-header">
     <div class="issue-id">${escapeHtml(issue.id)}</div>
     <h1 class="issue-title">${escapeHtml(issue.title)}</h1>
@@ -189,6 +321,22 @@ function getDetailHtml(issue: BeadsIssue): string {
   `
       : ''
   }
+  ${childrenHtml}
+  <script>
+    const vscode = acquireVsCodeApi();
+    document.querySelectorAll('.breadcrumb-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const issueId = item.getAttribute('data-id');
+        vscode.postMessage({ command: 'navigateToIssue', issueId });
+      });
+    });
+    document.querySelectorAll('.child-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const issueId = item.getAttribute('data-id');
+        vscode.postMessage({ command: 'navigateToIssue', issueId });
+      });
+    });
+  </script>
 </body>
 </html>`;
 }
@@ -245,18 +393,65 @@ export function activate(context: vscode.ExtensionContext) {
       lastClickedItem = { id: issue.id, timestamp: now };
 
       if (isDoubleClick) {
+        // Get cached issues for initial render
+        const initialIssues = beadsProvider.getCachedIssues();
+        const ancestors = getAllAncestors(issue, initialIssues);
+        const children = getChildren(issue, initialIssues);
+
         // Create webview panel
         const panel = vscode.window.createWebviewPanel(
           'beadsxDetail',
           `Issue: ${issue.id}`,
           vscode.ViewColumn.One,
           {
-            enableScripts: false,
+            enableScripts: true,
             retainContextWhenHidden: true,
           },
         );
 
-        panel.webview.html = getDetailHtml(issue);
+        panel.webview.html = getDetailHtml(issue, ancestors, children);
+
+        // Handle breadcrumb and child navigation
+        const messageDisposable = panel.webview.onDidReceiveMessage((message) => {
+          if (message.command === 'navigateToIssue') {
+            // Validate message payload
+            if (typeof message.issueId !== 'string' || !message.issueId) {
+              outputChannel.appendLine(
+                `Invalid navigateToIssue message: ${JSON.stringify(message)}`,
+              );
+              return;
+            }
+
+            // Get fresh cache for navigation (fixes stale data issue)
+            const currentIssues = beadsProvider.getCachedIssues();
+            const targetIssue = currentIssues.find((i) => i.id === message.issueId);
+
+            if (targetIssue) {
+              // Update panel with new issue
+              const newAncestors = getAllAncestors(targetIssue, currentIssues);
+              const newChildren = getChildren(targetIssue, currentIssues);
+              panel.title = `Issue: ${targetIssue.id}`;
+              panel.webview.html = getDetailHtml(targetIssue, newAncestors, newChildren);
+              outputChannel.appendLine(`Navigated to ${targetIssue.id}`);
+            } else {
+              // User feedback for failed navigation
+              outputChannel.appendLine(
+                `Navigation failed: Issue ${message.issueId} not found in cache`,
+              );
+              vscode.window.showWarningMessage(
+                `Issue ${message.issueId} not found. It may have been deleted or the view may need refreshing.`,
+              );
+            }
+          } else {
+            outputChannel.appendLine(`Unknown webview message command: ${JSON.stringify(message)}`);
+          }
+        });
+
+        // Clean up message listener when panel is disposed (fixes memory leak)
+        panel.onDidDispose(() => {
+          messageDisposable.dispose();
+        });
+
         outputChannel.appendLine(`Opened detail panel for ${issue.id}`);
       }
     },

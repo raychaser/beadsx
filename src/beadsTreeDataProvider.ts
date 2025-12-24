@@ -64,6 +64,10 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     return this.filterMode;
   }
 
+  getCachedIssues(): BeadsIssue[] {
+    return this.issuesCache;
+  }
+
   getFilterDisplayName(): string {
     const names: Record<FilterMode, string> = {
       all: 'All Issues',
