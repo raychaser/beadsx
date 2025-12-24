@@ -2,6 +2,7 @@
 
 export interface SortableIssue {
   status: string;
+  priority: number;
   closed_at: string | null;
 }
 
@@ -28,7 +29,7 @@ export function formatTimeAgo(dateStr: string): string {
 }
 
 /**
- * Sort issues: open first, then closed sorted by most recently closed
+ * Sort issues: open first (by priority), then closed sorted by most recently closed
  * Returns a new array (does not mutate input)
  */
 export function sortIssues<T extends SortableIssue>(issues: T[]): T[] {
@@ -47,7 +48,8 @@ export function sortIssues<T extends SortableIssue>(issues: T[]): T[] {
       return safeBTime - safeATime; // Descending (most recent first)
     }
 
-    return 0; // Keep original order for open issues
+    // Both open: sort by priority (0 first, then 1, 2, etc.)
+    return a.priority - b.priority;
   });
 }
 

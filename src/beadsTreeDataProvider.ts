@@ -176,8 +176,11 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
       }
     }
 
-    // Label shows status and ID, description shows title
-    const treeItem = new vscode.TreeItem(`${statusSymbol} ${displayId}`, collapsibleState);
+    // Label shows status, priority, and ID; description shows title
+    const treeItem = new vscode.TreeItem(
+      `${statusSymbol} p${element.priority} ${displayId}`,
+      collapsibleState,
+    );
 
     // Don't set treeItem.id to allow collapsible state to be re-evaluated on each refresh
     // Show relative time for closed issues
