@@ -256,3 +256,32 @@ export async function listFilteredIssues(
   log(`listFilteredIssues returning ${issues.length} issues (all)`);
   return issues;
 }
+
+/**
+ * Get immediate children of an issue.
+ * Returns array of issues whose parentId matches the given issue's id.
+ */
+export function getChildren(issue: BeadsIssue, allIssues: BeadsIssue[]): BeadsIssue[] {
+  return allIssues.filter((i) => i.parentId === issue.id);
+}
+
+/**
+ * Get all ancestors of an issue by walking up the parentId chain.
+ * Returns array from root ancestor to immediate parent (excludes the issue itself).
+ * Returns empty array if issue has no parent.
+ */
+export function getAllAncestors(issue: BeadsIssue, allIssues: BeadsIssue[]): BeadsIssue[] {
+  const ancestors: BeadsIssue[] = [];
+  const visited = new Set<string>(); // Prevent infinite loops from circular deps
+
+  let current = issue;
+  while (current.parentId && !visited.has(current.parentId)) {
+    visited.add(current.parentId);
+    const parent = allIssues.find((i) => i.id === current.parentId);
+    if (!parent) break;
+    ancestors.unshift(parent); // Add to front to get root-first order
+    current = parent;
+  }
+
+  return ancestors;
+}
