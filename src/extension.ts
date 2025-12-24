@@ -79,6 +79,7 @@ function getDetailHtml(issue: BeadsIssue, ancestors: BeadsIssue[], children: Bea
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';" />
   <title>${escapeHtml(issue.id)}</title>
   <style>
     body {
@@ -392,10 +393,10 @@ export function activate(context: vscode.ExtensionContext) {
       lastClickedItem = { id: issue.id, timestamp: now };
 
       if (isDoubleClick) {
-        // Get all cached issues for ancestor/children lookup
-        const allIssues = beadsProvider.getCachedIssues();
-        const ancestors = getAllAncestors(issue, allIssues);
-        const children = getChildren(issue, allIssues);
+        // Get cached issues for initial render
+        const initialIssues = beadsProvider.getCachedIssues();
+        const ancestors = getAllAncestors(issue, initialIssues);
+        const children = getChildren(issue, initialIssues);
 
         // Create webview panel
         const panel = vscode.window.createWebviewPanel(
@@ -411,18 +412,44 @@ export function activate(context: vscode.ExtensionContext) {
         panel.webview.html = getDetailHtml(issue, ancestors, children);
 
         // Handle breadcrumb and child navigation
-        panel.webview.onDidReceiveMessage((message) => {
+        const messageDisposable = panel.webview.onDidReceiveMessage((message) => {
           if (message.command === 'navigateToIssue') {
-            const targetIssue = allIssues.find((i) => i.id === message.issueId);
+            // Validate message payload
+            if (typeof message.issueId !== 'string' || !message.issueId) {
+              outputChannel.appendLine(
+                `Invalid navigateToIssue message: ${JSON.stringify(message)}`,
+              );
+              return;
+            }
+
+            // Get fresh cache for navigation (fixes stale data issue)
+            const currentIssues = beadsProvider.getCachedIssues();
+            const targetIssue = currentIssues.find((i) => i.id === message.issueId);
+
             if (targetIssue) {
               // Update panel with new issue
-              const newAncestors = getAllAncestors(targetIssue, allIssues);
-              const newChildren = getChildren(targetIssue, allIssues);
+              const newAncestors = getAllAncestors(targetIssue, currentIssues);
+              const newChildren = getChildren(targetIssue, currentIssues);
               panel.title = `Issue: ${targetIssue.id}`;
               panel.webview.html = getDetailHtml(targetIssue, newAncestors, newChildren);
               outputChannel.appendLine(`Navigated to ${targetIssue.id}`);
+            } else {
+              // User feedback for failed navigation
+              outputChannel.appendLine(
+                `Navigation failed: Issue ${message.issueId} not found in cache`,
+              );
+              vscode.window.showWarningMessage(
+                `Issue ${message.issueId} not found. It may have been deleted or the view may need refreshing.`,
+              );
             }
+          } else {
+            outputChannel.appendLine(`Unknown webview message command: ${JSON.stringify(message)}`);
           }
+        });
+
+        // Clean up message listener when panel is disposed (fixes memory leak)
+        panel.onDidDispose(() => {
+          messageDisposable.dispose();
         });
 
         outputChannel.appendLine(`Opened detail panel for ${issue.id}`);
