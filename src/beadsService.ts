@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import * as fs from 'node:fs';
+import { access } from 'node:fs/promises';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
 import * as vscode from 'vscode';
@@ -7,13 +7,37 @@ import { DEFAULT_RECENT_WINDOW_MINUTES, validateRecentWindowMinutes } from './ut
 
 const execFileAsync = promisify(execFile);
 
+// Cache for beads initialization status to avoid repeated fs checks
+const beadsInitializedCache = new Map<string, boolean>();
+
 /**
  * Check if beads is initialized in the given workspace
  * Returns true if .beads/ directory exists
+ * Uses async fs access with caching to avoid blocking the UI thread
  */
-export function isBeadsInitialized(workspaceRoot: string): boolean {
+export async function isBeadsInitialized(workspaceRoot: string): Promise<boolean> {
+  // Return cached result if available
+  const cached = beadsInitializedCache.get(workspaceRoot);
+  if (cached !== undefined) {
+    return cached;
+  }
+
   const beadsDir = path.join(workspaceRoot, '.beads');
-  return fs.existsSync(beadsDir);
+  try {
+    await access(beadsDir);
+    beadsInitializedCache.set(workspaceRoot, true);
+    return true;
+  } catch {
+    beadsInitializedCache.set(workspaceRoot, false);
+    return false;
+  }
+}
+
+/**
+ * Clear the beads initialization cache (useful for testing or after workspace changes)
+ */
+export function clearBeadsInitializedCache(): void {
+  beadsInitializedCache.clear();
 }
 
 // Module-level output channel reference for logging
@@ -33,7 +57,16 @@ function log(message: string): void {
 function getBdCommand(): string {
   const config = vscode.workspace.getConfiguration('beadsx');
   const customPath = config.get<string>('commandPath', '');
-  return customPath || 'bd';
+
+  if (customPath) {
+    // Basic validation - reject paths with shell metacharacters
+    if (/[;&|<>`$]/.test(customPath)) {
+      log('Warning: Invalid commandPath contains shell metacharacters, using default');
+      return 'bd';
+    }
+    return customPath;
+  }
+  return 'bd';
 }
 
 export interface BeadsDependency {
@@ -61,7 +94,7 @@ export interface BeadsIssue {
 
 export async function listReadyIssues(workspaceRoot: string): Promise<BeadsIssue[]> {
   // Skip if beads is not initialized in this workspace
-  if (!isBeadsInitialized(workspaceRoot)) {
+  if (!(await isBeadsInitialized(workspaceRoot))) {
     log('Beads not initialized in workspace, skipping bd ready');
     return [];
   }
@@ -74,6 +107,7 @@ export async function listReadyIssues(workspaceRoot: string): Promise<BeadsIssue
   try {
     const result = await execFileAsync(bdCmd, ['ready', '--json'], {
       cwd: workspaceRoot,
+      timeout: 30000, // 30 second timeout to prevent hanging
     });
     stdout = result.stdout;
     stderr = result.stderr;
@@ -121,7 +155,7 @@ export type FilterMode = 'all' | 'open' | 'ready' | 'recent';
 
 export async function exportIssuesWithDeps(workspaceRoot: string): Promise<BeadsIssue[]> {
   // Skip if beads is not initialized in this workspace
-  if (!isBeadsInitialized(workspaceRoot)) {
+  if (!(await isBeadsInitialized(workspaceRoot))) {
     log('Beads not initialized in workspace, skipping bd export');
     return [];
   }
@@ -135,6 +169,7 @@ export async function exportIssuesWithDeps(workspaceRoot: string): Promise<Beads
   try {
     const result = await execFileAsync(bdCmd, ['export'], {
       cwd: workspaceRoot,
+      timeout: 30000, // 30 second timeout to prevent hanging
     });
     stdout = result.stdout;
     stderr = result.stderr;
