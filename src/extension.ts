@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 
 import {
   type BeadsIssue,
+  clearBeadsInitializedCache,
   type FilterMode,
   getAllAncestors,
   getChildren,
@@ -384,6 +385,7 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   const refreshCommand = vscode.commands.registerCommand('beadsx.refresh', () => {
+    clearBeadsInitializedCache(); // Re-check .beads/ directory on manual refresh
     beadsProvider.refresh();
   });
 

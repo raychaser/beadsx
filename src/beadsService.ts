@@ -27,8 +27,14 @@ export async function isBeadsInitialized(workspaceRoot: string): Promise<boolean
     await access(beadsDir);
     beadsInitializedCache.set(workspaceRoot, true);
     return true;
-  } catch {
-    beadsInitializedCache.set(workspaceRoot, false);
+  } catch (error: unknown) {
+    // ENOENT means directory doesn't exist - expected case, cache the result
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      beadsInitializedCache.set(workspaceRoot, false);
+      return false;
+    }
+    // Other errors (permission denied, etc.) - log warning, don't cache to allow retry
+    log(`Warning: Could not check beads initialization: ${error}`);
     return false;
   }
 }
