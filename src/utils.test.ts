@@ -124,6 +124,56 @@ describe('sortIssues', () => {
     expect(sorted.map((i) => i.id)).toEqual(['critical', 'medium', 'low']);
   });
 
+  it('maintains relative order for open issues with same priority', () => {
+    const issues = [
+      { status: 'open', priority: 2, closed_at: null, id: 'first' },
+      { status: 'open', priority: 2, closed_at: null, id: 'second' },
+      { status: 'open', priority: 2, closed_at: null, id: 'third' },
+    ];
+    const sorted = sortIssues(issues);
+    // @ts-expect-error - id is for testing
+    expect(sorted.map((i) => i.id)).toEqual(['first', 'second', 'third']);
+  });
+
+  it('sorts in_progress issues by priority alongside open issues', () => {
+    const issues = [
+      { status: 'in_progress', priority: 3, closed_at: null, id: 'ip-low' },
+      { status: 'open', priority: 1, closed_at: null, id: 'open-high' },
+      { status: 'in_progress', priority: 0, closed_at: null, id: 'ip-critical' },
+    ];
+    const sorted = sortIssues(issues);
+    // @ts-expect-error - id is for testing
+    expect(sorted.map((i) => i.id)).toEqual(['ip-critical', 'open-high', 'ip-low']);
+  });
+
+  it('sorts open by priority and closed by recency in combined list', () => {
+    const issues = [
+      { status: 'closed', priority: 0, closed_at: '2025-01-10T10:00:00.000Z', id: 'closed-old' },
+      { status: 'open', priority: 2, closed_at: null, id: 'open-low' },
+      { status: 'closed', priority: 0, closed_at: '2025-01-15T10:00:00.000Z', id: 'closed-new' },
+      { status: 'open', priority: 0, closed_at: null, id: 'open-high' },
+    ];
+    const sorted = sortIssues(issues);
+    // @ts-expect-error - id is for testing
+    expect(sorted.map((i) => i.id)).toEqual([
+      'open-high', // open, priority 0
+      'open-low', // open, priority 2
+      'closed-new', // closed, most recent
+      'closed-old', // closed, oldest
+    ]);
+  });
+
+  it('handles negative and large priority values', () => {
+    const issues = [
+      { status: 'open', priority: 100, closed_at: null, id: 'very-low' },
+      { status: 'open', priority: -1, closed_at: null, id: 'negative' },
+      { status: 'open', priority: 0, closed_at: null, id: 'zero' },
+    ];
+    const sorted = sortIssues(issues);
+    // @ts-expect-error - id is for testing
+    expect(sorted.map((i) => i.id)).toEqual(['negative', 'zero', 'very-low']);
+  });
+
   it('handles empty array', () => {
     const sorted = sortIssues([]);
     expect(sorted).toEqual([]);
