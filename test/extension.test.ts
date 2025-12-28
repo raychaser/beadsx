@@ -45,6 +45,7 @@ const args = [
   '--skip-welcome',
   '--skip-release-notes',
   '--disable-workspace-trust',
+  '--new-window', // Force new window to prevent sharing state with other instances
   `--extensionDevelopmentPath=${extensionPath}`,
   `--user-data-dir=${userDataDir}`,
   `--extensions-dir=${extensionsDir}`,
@@ -55,10 +56,11 @@ const args = [
 // ============================================
 
 /**
- * Run a bd command in JSONL mode (no --db flag needed, uses cwd's .beads/issues.jsonl)
+ * Run a bd command in JSONL mode with --no-db to prevent auto-discovery of parent databases
+ * This ensures complete isolation from the main project's beads database
  */
 function runBdCommand(cmd: string, cwd: string, encoding?: 'utf8'): string | Buffer {
-  const fullCmd = `bd ${cmd}`;
+  const fullCmd = `bd --no-db ${cmd}`;
   return execSync(fullCmd, { cwd, encoding, stdio: encoding ? undefined : 'pipe' });
 }
 
@@ -437,6 +439,7 @@ test.describe('BeadsX Extension', () => {
     // Apply Ready filter
     await executeFilterCommand(page);
     await page.locator('.quick-input-list-row').filter({ hasText: 'Ready Issues' }).click();
+    await page.waitForTimeout(2000); // Wait for tree to update after filter
 
     // Wait for tree to show only 2 items (epic and task, but not bug)
     await expect(getBeadsXTreeItems(page)).toHaveCount(2, { timeout: 15000 });
