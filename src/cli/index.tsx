@@ -4,16 +4,45 @@
 import { createCliRenderer } from '@opentui/core';
 import { createRoot } from '@opentui/react';
 import * as path from 'node:path';
-import { configure, type Logger } from '../core';
+import { stat } from 'node:fs/promises';
+import { configure, isBeadsInitialized, type Logger } from '../core';
 import { App } from './App';
 
-// Get workspace root from args or current directory
-const workspaceRoot = process.argv[2] || process.cwd();
+// Parse command line arguments
+const args = process.argv.slice(2);
+const verbose = args.includes('--verbose') || args.includes('-v');
+const showHelp = args.includes('--help') || args.includes('-h');
 
-// Configure the core service with console logger
+// Filter out flags to get workspace path
+const nonFlagArgs = args.filter((arg) => !arg.startsWith('-'));
+const rawWorkspaceRoot = nonFlagArgs[0] || process.cwd();
+const workspaceRoot = path.resolve(rawWorkspaceRoot);
+
+// Show help and exit
+if (showHelp) {
+  console.log('Usage: bdx [options] [workspace-path]');
+  console.log('');
+  console.log('Interactive TUI for beads issue tracking');
+  console.log('');
+  console.log('Options:');
+  console.log('  -h, --help     Show this help message');
+  console.log('  -v, --verbose  Enable verbose logging');
+  console.log('');
+  console.log('Keyboard shortcuts:');
+  console.log('  j/k or arrows  Navigate up/down');
+  console.log('  h/l or arrows  Collapse/expand');
+  console.log('  1-4            Switch filter (All/Open/Ready/Recent)');
+  console.log('  r              Refresh');
+  console.log('  q              Quit');
+  process.exit(0);
+}
+
+// Configure the core service with logger
 const logger: Logger = {
   log: (msg) => {
-    // Silent in normal operation, could add --verbose flag
+    if (verbose) {
+      console.error(`[debug] ${msg}`);
+    }
   },
   warn: (msg) => console.error(`[warn] ${msg}`),
   error: (msg) => console.error(`[error] ${msg}`),
@@ -28,11 +57,26 @@ configure({}, logger, (message, type) => {
 });
 
 async function main() {
-  // Check if beads is initialized
-  const beadsDir = path.join(workspaceRoot, '.beads');
+  // Validate workspace path exists and is a directory
   try {
-    await import('node:fs/promises').then((fs) => fs.access(beadsDir));
-  } catch {
+    const stats = await stat(workspaceRoot);
+    if (!stats.isDirectory()) {
+      console.error(`Error: ${workspaceRoot} is not a directory`);
+      process.exit(1);
+    }
+  } catch (err) {
+    if (err instanceof Error && 'code' in err && err.code === 'ENOENT') {
+      console.error(`Error: Directory not found: ${workspaceRoot}`);
+    } else if (err instanceof Error && 'code' in err && err.code === 'EACCES') {
+      console.error(`Error: Permission denied accessing ${workspaceRoot}`);
+    } else {
+      console.error(`Error: Cannot access ${workspaceRoot}: ${err}`);
+    }
+    process.exit(1);
+  }
+
+  // Check if beads is initialized using core function
+  if (!(await isBeadsInitialized(workspaceRoot))) {
     console.error(`Error: No .beads directory found in ${workspaceRoot}`);
     console.error('Run "bd init" to initialize beads in this directory.');
     process.exit(1);

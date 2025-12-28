@@ -1,5 +1,6 @@
 // Issue tree component
 
+import { useMemo } from 'react';
 import type { BeadsIssue } from '../../core';
 import { IssueRow } from './IssueRow';
 
@@ -11,26 +12,46 @@ interface IssueTreeProps {
 }
 
 export function IssueTree({ issues, visibleIssues, expandedIds, selectedIndex }: IssueTreeProps) {
-  // Calculate depth for each visible issue
-  const getDepth = (issue: BeadsIssue): number => {
-    let depth = 0;
-    let current = issue;
-    while (current.parentId) {
-      const parent = issues.find((i) => i.id === current.parentId);
-      if (!parent) break;
-      depth++;
-      current = parent;
-    }
-    return depth;
-  };
+  // Pre-compute depths using memoized Map for O(1) lookups
+  const depthMap = useMemo(() => {
+    const map = new Map<string, number>();
+    const issueMap = new Map(issues.map((i) => [i.id, i]));
 
-  // Check if an issue has children
-  const hasChildren = (issue: BeadsIssue): boolean => {
-    return issues.some((i) => i.parentId === issue.id);
-  };
+    const computeDepth = (issue: BeadsIssue): number => {
+      if (map.has(issue.id)) return map.get(issue.id)!;
+      if (!issue.parentId) {
+        map.set(issue.id, 0);
+        return 0;
+      }
+      const parent = issueMap.get(issue.parentId);
+      if (!parent) {
+        map.set(issue.id, 0);
+        return 0;
+      }
+      const depth = computeDepth(parent) + 1;
+      map.set(issue.id, depth);
+      return depth;
+    };
+
+    for (const issue of issues) {
+      computeDepth(issue);
+    }
+    return map;
+  }, [issues]);
+
+  // Memoize children lookup for O(1) checks
+  const childrenSet = useMemo(() => {
+    const set = new Set<string>();
+    for (const issue of issues) {
+      if (issue.parentId) {
+        set.add(issue.parentId);
+      }
+    }
+    return set;
+  }, [issues]);
 
   // Check if an issue is the last child of its parent
-  const isLastChild = (issue: BeadsIssue, index: number): boolean => {
+  const isLastChild = (issue: BeadsIssue): boolean => {
     if (!issue.parentId) {
       // Root level: check if last root
       const roots = visibleIssues.filter((i) => !i.parentId);
@@ -47,11 +68,11 @@ export function IssueTree({ issues, visibleIssues, expandedIds, selectedIndex }:
         <IssueRow
           key={issue.id}
           issue={issue}
-          depth={getDepth(issue)}
+          depth={depthMap.get(issue.id) ?? 0}
           isExpanded={expandedIds.has(issue.id)}
-          hasChildren={hasChildren(issue)}
+          hasChildren={childrenSet.has(issue.id)}
           isSelected={index === selectedIndex}
-          isLastChild={isLastChild(issue, index)}
+          isLastChild={isLastChild(issue)}
         />
       ))}
     </box>

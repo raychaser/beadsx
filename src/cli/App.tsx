@@ -2,7 +2,7 @@
 
 import { useKeyboard } from '@opentui/react';
 import type { KeyEvent } from '@opentui/core';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   type BeadsIssue,
   type FilterMode,
@@ -27,10 +27,12 @@ export function App({ workspaceRoot }: AppProps) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Load issues
   const loadIssues = useCallback(async () => {
     try {
+      setError(null);
       const loaded = await listFilteredIssues(workspaceRoot, filter);
       setIssues(loaded);
       setLastRefresh(new Date());
@@ -49,7 +51,9 @@ export function App({ workspaceRoot }: AppProps) {
         setExpandedIds(toExpand);
       }
     } catch (err) {
-      // Error already logged by core service
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error(`[error] Failed to load issues: ${errorMessage}`);
+      setError(`Failed to load issues: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -60,11 +64,15 @@ export function App({ workspaceRoot }: AppProps) {
     loadIssues();
   }, [loadIssues]);
 
-  // Auto-refresh timer
+  // Use ref to avoid recreating interval when loadIssues changes
+  const loadIssuesRef = useRef(loadIssues);
+  loadIssuesRef.current = loadIssues;
+
+  // Auto-refresh timer - uses ref to prevent interval recreation
   useEffect(() => {
-    const interval = setInterval(loadIssues, REFRESH_INTERVAL_MS);
+    const interval = setInterval(() => loadIssuesRef.current(), REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [loadIssues]);
+  }, []);
 
   // Build flat list of visible issues for navigation
   const getVisibleIssues = useCallback((): BeadsIssue[] => {
@@ -157,7 +165,9 @@ export function App({ workspaceRoot }: AppProps) {
     <box flexDirection="column">
       <FilterBar filter={filter} lastRefresh={lastRefresh} />
       <box flexDirection="column" flexGrow={1}>
-        {loading ? (
+        {error ? (
+          <text fg="red">{error}</text>
+        ) : loading ? (
           <text>Loading...</text>
         ) : visibleIssues.length === 0 ? (
           <text fg="gray">No issues found</text>
