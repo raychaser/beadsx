@@ -120,7 +120,8 @@
     "test:unit": "vitest run",
     "prepare": "husky",
     "cli:dev": "bun run src/cli/index.tsx",
-    "cli:build": "esbuild ./src/cli/index.tsx --bundle --outfile=dist/cli/index.js --format=esm --platform=node --external:@opentui/core --external:react"
+    "cli:build": "bun build --compile src/cli/index.tsx --outfile dist/bdx",
+    "cli:build:all": "bun build --compile src/cli/index.tsx --outfile dist/bdx-darwin-arm64 --target bun-darwin-arm64 && bun build --compile src/cli/index.tsx --outfile dist/bdx-darwin-x64 --target bun-darwin-x64 && bun build --compile src/cli/index.tsx --outfile dist/bdx-linux-x64 --target bun-linux-x64"
   },
   "bin": {
     "bdx": "./bin/bdx.js"

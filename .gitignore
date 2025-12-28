@@ -32,4 +32,4 @@ test/**/*.js.map
 .beads/daemon.*
 .beads/*.left.*
 .beads/deletions.jsonl
-.beads/deletions.jsonl.migrated
+.beads/deletions.jsonl.migrateddist/
