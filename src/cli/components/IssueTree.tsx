@@ -17,9 +17,14 @@ export function IssueTree({ issues, visibleIssues, expandedIds, selectedIndex }:
     const map = new Map<string, number>();
     const issueMap = new Map(issues.map((i) => [i.id, i]));
 
-    const computeDepth = (issue: BeadsIssue): number => {
+    const computeDepth = (issue: BeadsIssue, visiting: Set<string>): number => {
       if (map.has(issue.id)) return map.get(issue.id)!;
       if (!issue.parentId) {
+        map.set(issue.id, 0);
+        return 0;
+      }
+      // Detect circular reference - treat as root if cycle found
+      if (visiting.has(issue.id)) {
         map.set(issue.id, 0);
         return 0;
       }
@@ -28,13 +33,15 @@ export function IssueTree({ issues, visibleIssues, expandedIds, selectedIndex }:
         map.set(issue.id, 0);
         return 0;
       }
-      const depth = computeDepth(parent) + 1;
+      visiting.add(issue.id);
+      const depth = computeDepth(parent, visiting) + 1;
+      visiting.delete(issue.id);
       map.set(issue.id, depth);
       return depth;
     };
 
     for (const issue of issues) {
-      computeDepth(issue);
+      computeDepth(issue, new Set());
     }
     return map;
   }, [issues]);

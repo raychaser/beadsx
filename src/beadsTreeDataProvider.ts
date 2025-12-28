@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { BeadsIssue, type FilterMode, listFilteredIssues } from './beadsService';
+import { BeadsIssue, type FilterMode, listFilteredIssuesWithConfig } from './beadsService';
 import { formatTimeAgo, sortIssues } from './utils';
 
 export { BeadsIssue };
@@ -260,7 +260,7 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     if (this.issuesCache.length === 0) {
       if (!this.loadingPromise) {
         const startTime = Date.now();
-        this.loadingPromise = listFilteredIssues(this.workspaceRoot, this.filterMode)
+        this.loadingPromise = listFilteredIssuesWithConfig(this.workspaceRoot, this.filterMode)
           .then((issues) => {
             const elapsed = Date.now() - startTime;
             this.log(`loaded ${issues.length} issues in ${elapsed}ms`);

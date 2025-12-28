@@ -45,6 +45,7 @@ const args = [
   '--skip-welcome',
   '--skip-release-notes',
   '--disable-workspace-trust',
+  '--new-window', // Force new window to prevent sharing state with other instances
   `--extensionDevelopmentPath=${extensionPath}`,
   `--user-data-dir=${userDataDir}`,
   `--extensions-dir=${extensionsDir}`,
@@ -55,18 +56,28 @@ const args = [
 // ============================================
 
 /**
+ * Run a bd command in JSONL mode with --no-db to prevent auto-discovery of parent databases
+ * This ensures complete isolation from the main project's beads database
+ */
+function runBdCommand(cmd: string, cwd: string, encoding?: 'utf8'): string | Buffer {
+  const fullCmd = `bd --no-db ${cmd}`;
+  return execSync(fullCmd, { cwd, encoding, stdio: encoding ? undefined : 'pipe' });
+}
+
+/**
  * Creates a beads issue and captures the returned ID
+ * Relies on JSONL mode which is workspace-local by design
  */
 function createIssueAndCaptureId(
   cwd: string,
   opts: { title: string; type: string; description?: string },
 ): string {
-  let cmd = `bd create --title "${opts.title}" --type ${opts.type}`;
+  let cmd = `create --title "${opts.title}" --type ${opts.type}`;
   if (opts.description) {
     cmd += ` --description "${opts.description}"`;
   }
 
-  const output = execSync(cmd, { cwd, encoding: 'utf8' });
+  const output = runBdCommand(cmd, cwd, 'utf8') as string;
   const match = output.match(/Created issue: ([\w-]+)/);
   if (!match) {
     throw new Error(`Failed to parse issue ID from: ${output}`);
@@ -205,9 +216,10 @@ test.beforeAll(async () => {
   fs.mkdirSync(extensionsDir, { recursive: true });
   console.log('Created temp dirs:', { workspacePath, userDataDir, extensionsDir });
 
-  // Initialize beads database with known test issues and capture IDs
+  // Initialize beads in JSONL-only mode (--no-db) for complete workspace isolation
+  // This prevents bd from auto-discovering databases in parent directories
   try {
-    execSync('bd init -p test -q', { cwd: workspacePath, stdio: 'pipe' });
+    execSync('bd init -p test -q --force --no-db', { cwd: workspacePath, stdio: 'pipe' });
 
     testIssues = {
       epic: {
@@ -251,6 +263,7 @@ test.beforeAll(async () => {
     executablePath: vscodeExecutablePath,
     args,
     timeout: 60000,
+    cwd: workspacePath, // Ensure VSCode runs from the test workspace directory
   });
   console.log('Electron app launched');
 
@@ -395,10 +408,7 @@ test.describe('BeadsX Extension', () => {
     await expect(getBeadsXTreeItems(page)).toHaveCount(3);
 
     // Close one issue externally
-    execSync(`bd close ${testIssues.task.id} --reason "testing filter"`, {
-      cwd: workspacePath,
-      stdio: 'pipe',
-    });
+    runBdCommand(`close ${testIssues.task.id} --reason "testing filter"`, workspacePath);
 
     // Refresh to pick up the external status change
     await refreshBeadsXPanel(page);
@@ -412,10 +422,7 @@ test.describe('BeadsX Extension', () => {
     await expect(getBeadsXTreeItems(page)).toHaveCount(2);
 
     // Reopen the issue for other tests
-    execSync(`bd update ${testIssues.task.id} --status open`, {
-      cwd: workspacePath,
-      stdio: 'pipe',
-    });
+    runBdCommand(`update ${testIssues.task.id} --status open`, workspacePath);
 
     // Reset to All filter
     await executeFilterCommand(page);
@@ -425,10 +432,7 @@ test.describe('BeadsX Extension', () => {
 
   test('Filter: Ready filter shows only unblocked issues', async () => {
     // Create a blocking dependency: bug is blocked by epic
-    execSync(`bd dep add ${testIssues.bug.id} ${testIssues.epic.id} --type blocks`, {
-      cwd: workspacePath,
-      stdio: 'pipe',
-    });
+    runBdCommand(`dep add ${testIssues.bug.id} ${testIssues.epic.id} --type blocks`, workspacePath);
 
     // Refresh to pick up the external dependency change
     await refreshBeadsXPanel(page);
@@ -436,6 +440,7 @@ test.describe('BeadsX Extension', () => {
     // Apply Ready filter
     await executeFilterCommand(page);
     await page.locator('.quick-input-list-row').filter({ hasText: 'Ready Issues' }).click();
+    await page.waitForTimeout(2000); // Wait for tree to update after filter
 
     // Wait for tree to show only 2 items (epic and task, but not bug)
     await expect(getBeadsXTreeItems(page)).toHaveCount(2, { timeout: 15000 });
@@ -456,10 +461,7 @@ test.describe('BeadsX Extension', () => {
     await expect(getBeadsXTreeItems(page)).toHaveCount(3, { timeout: 10000 });
 
     // Close an issue
-    execSync(`bd close ${testIssues.task.id} --reason "testing recent filter"`, {
-      cwd: workspacePath,
-      stdio: 'pipe',
-    });
+    runBdCommand(`close ${testIssues.task.id} --reason "testing recent filter"`, workspacePath);
 
     // Refresh to pick up the status change
     await refreshBeadsXPanel(page);
@@ -477,10 +479,7 @@ test.describe('BeadsX Extension', () => {
     await expect(getIssueById(page, testIssues.task.id)).toBeVisible();
 
     // Reopen the issue for other tests
-    execSync(`bd update ${testIssues.task.id} --status open`, {
-      cwd: workspacePath,
-      stdio: 'pipe',
-    });
+    runBdCommand(`update ${testIssues.task.id} --status open`, workspacePath);
 
     // Reset to All filter
     await executeFilterCommand(page);
@@ -495,10 +494,7 @@ test.describe('BeadsX Extension', () => {
     const initialCount = await getBeadsXTreeItems(page).count();
 
     // Add a new issue externally via bd CLI
-    execSync('bd create --title "Externally Added" --type task', {
-      cwd: workspacePath,
-      stdio: 'pipe',
-    });
+    runBdCommand('create --title "Externally Added" --type task', workspacePath);
 
     // Refresh the panel
     await refreshBeadsXPanel(page);
@@ -516,10 +512,7 @@ test.describe('BeadsX Extension', () => {
     await expect(epicItem).toContainText('[O]');
 
     // Close the issue externally
-    execSync(`bd close ${testIssues.epic.id} --reason "testing refresh"`, {
-      cwd: workspacePath,
-      stdio: 'pipe',
-    });
+    runBdCommand(`close ${testIssues.epic.id} --reason "testing refresh"`, workspacePath);
 
     // Refresh
     await refreshBeadsXPanel(page);
@@ -528,10 +521,7 @@ test.describe('BeadsX Extension', () => {
     await expect(epicItem).toContainText('[C]', { timeout: 10000 });
 
     // Reopen for other tests
-    execSync(`bd update ${testIssues.epic.id} --status open`, {
-      cwd: workspacePath,
-      stdio: 'pipe',
-    });
+    runBdCommand(`update ${testIssues.epic.id} --status open`, workspacePath);
     await refreshBeadsXPanel(page);
   });
 });

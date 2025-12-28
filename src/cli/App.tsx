@@ -16,11 +16,12 @@ import { StatusBar } from './components/StatusBar';
 
 interface AppProps {
   workspaceRoot: string;
+  onQuit?: () => void;
 }
 
 const REFRESH_INTERVAL_MS = 5000; // 5 seconds
 
-export function App({ workspaceRoot }: AppProps) {
+export function App({ workspaceRoot, onQuit }: AppProps) {
   const [issues, setIssues] = useState<BeadsIssue[]>([]);
   const [filter, setFilter] = useState<FilterMode>('recent');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -33,7 +34,15 @@ export function App({ workspaceRoot }: AppProps) {
   const loadIssues = useCallback(async () => {
     try {
       setError(null);
-      const loaded = await listFilteredIssues(workspaceRoot, filter);
+      const result = await listFilteredIssues(workspaceRoot, filter);
+
+      // Handle error from BeadsResult
+      if (!result.success) {
+        setError(result.error ?? 'Failed to load issues');
+        return;
+      }
+
+      const loaded = result.data;
       setIssues(loaded);
       setLastRefresh(new Date());
 
@@ -64,13 +73,24 @@ export function App({ workspaceRoot }: AppProps) {
     loadIssues();
   }, [loadIssues]);
 
-  // Use ref to avoid recreating interval when loadIssues changes
+  // Use refs to avoid recreating interval when callbacks change
   const loadIssuesRef = useRef(loadIssues);
   loadIssuesRef.current = loadIssues;
+  const setErrorRef = useRef(setError);
+  setErrorRef.current = setError;
 
-  // Auto-refresh timer - uses ref to prevent interval recreation
+  // Auto-refresh timer - uses refs to prevent interval recreation
+  // Wraps call in async handler to properly catch any errors and update UI
   useEffect(() => {
-    const interval = setInterval(() => loadIssuesRef.current(), REFRESH_INTERVAL_MS);
+    const interval = setInterval(async () => {
+      try {
+        await loadIssuesRef.current();
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        console.error(`[error] Auto-refresh failed: ${errorMessage}`);
+        setErrorRef.current(`Auto-refresh failed: ${errorMessage}`);
+      }
+    }, REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
   }, []);
 
@@ -145,12 +165,20 @@ export function App({ workspaceRoot }: AppProps) {
 
     // Refresh
     else if (key === 'r') {
-      loadIssues();
+      loadIssues().catch((err) => {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        console.error(`[error] Manual refresh failed: ${errorMessage}`);
+        setError(`Manual refresh failed: ${errorMessage}`);
+      });
     }
 
-    // Quit
+    // Quit - use callback for proper cleanup, fallback to process.exit
     else if (key === 'q') {
-      process.exit(0);
+      if (onQuit) {
+        onQuit();
+      } else {
+        process.exit(0);
+      }
     }
   });
 

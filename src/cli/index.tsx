@@ -93,9 +93,15 @@ async function main() {
 
   const renderer = await createCliRenderer({
     exitOnCtrlC: true,
+    onDestroy: () => process.exit(0),
   });
 
-  createRoot(renderer).render(<App workspaceRoot={workspaceRoot} />);
+  const handleQuit = () => {
+    renderer.destroy();
+    // process.exit(0) will be called by onDestroy callback
+  };
+
+  createRoot(renderer).render(<App workspaceRoot={workspaceRoot} onQuit={handleQuit} />);
 }
 
 main().catch((err) => {

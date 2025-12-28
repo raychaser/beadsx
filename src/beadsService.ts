@@ -74,18 +74,21 @@ function updateCoreConfig(): void {
 }
 
 // Wrapper to ensure config is refreshed before each call
+// Returns BeadsIssue[] for backwards compatibility (unwraps BeadsResult)
 export async function listFilteredIssuesWithConfig(
   workspaceRoot: string,
   filter: FilterMode,
 ): Promise<BeadsIssue[]> {
   updateCoreConfig();
-  return listFilteredIssues(workspaceRoot, filter);
+  const result = await listFilteredIssues(workspaceRoot, filter);
+  return result.data;
 }
 
 export async function listReadyIssuesWithConfig(workspaceRoot: string): Promise<BeadsIssue[]> {
   updateCoreConfig();
-  return listReadyIssues(workspaceRoot);
+  const result = await listReadyIssues(workspaceRoot);
+  return result.data;
 }
 
-// Export the listFilteredIssues function with auto-config refresh for compatibility
+// Export the core functions (now return BeadsResult)
 export { listFilteredIssues, listReadyIssues };

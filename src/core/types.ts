@@ -7,13 +7,19 @@ export interface BeadsDependency {
   created_at: string;
 }
 
+// Issue status values
+export type IssueStatus = 'open' | 'in_progress' | 'blocked' | 'closed';
+
+// Issue type values
+export type IssueType = 'bug' | 'feature' | 'epic' | 'chore' | 'task';
+
 export interface BeadsIssue {
   id: string;
   title: string;
   description: string;
-  status: string;
+  status: IssueStatus;
   priority: number;
-  issue_type: string;
+  issue_type: IssueType;
   created_at: string;
   updated_at: string;
   closed_at: string | null;
@@ -39,8 +45,14 @@ export interface Logger {
 }
 
 // Reusable interface for sortable issues
+// Uses IssueStatus | string for compatibility with external data that may have unknown statuses
 export interface SortableIssue {
-  status: string;
+  status: IssueStatus | string;
   priority: number;
   closed_at: string | null;
 }
+
+// Result type for operations that can fail - discriminated union prevents illegal states
+export type BeadsResult<T> =
+  | { success: true; data: T; error?: never }
+  | { success: false; data: T; error: string };
