@@ -55,24 +55,16 @@ const args = [
 // ============================================
 
 /**
- * Get the path to the test beads database
- */
-function getTestDbPath(): string {
-  return path.join(workspacePath, '.beads', 'beads.db');
-}
-
-/**
- * Run a bd command with explicit --db flag to ensure we're using the test database
+ * Run a bd command in JSONL mode (no --db flag needed, uses cwd's .beads/issues.jsonl)
  */
 function runBdCommand(cmd: string, cwd: string, encoding?: 'utf8'): string | Buffer {
-  const dbPath = getTestDbPath();
-  const fullCmd = `bd --db "${dbPath}" ${cmd}`;
+  const fullCmd = `bd ${cmd}`;
   return execSync(fullCmd, { cwd, encoding, stdio: encoding ? undefined : 'pipe' });
 }
 
 /**
  * Creates a beads issue and captures the returned ID
- * Uses explicit --db flag to ensure we're using the test database
+ * Relies on JSONL mode which is workspace-local by design
  */
 function createIssueAndCaptureId(
   cwd: string,
@@ -222,9 +214,10 @@ test.beforeAll(async () => {
   fs.mkdirSync(extensionsDir, { recursive: true });
   console.log('Created temp dirs:', { workspacePath, userDataDir, extensionsDir });
 
-  // Initialize beads database with known test issues and capture IDs
+  // Initialize beads in JSONL-only mode (--no-db) for complete workspace isolation
+  // This prevents bd from auto-discovering databases in parent directories
   try {
-    execSync('bd init -p test -q --force', { cwd: workspacePath, stdio: 'pipe' });
+    execSync('bd init -p test -q --force --no-db', { cwd: workspacePath, stdio: 'pipe' });
 
     testIssues = {
       epic: {
