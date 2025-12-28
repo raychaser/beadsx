@@ -33,7 +33,15 @@ export function App({ workspaceRoot }: AppProps) {
   const loadIssues = useCallback(async () => {
     try {
       setError(null);
-      const loaded = await listFilteredIssues(workspaceRoot, filter);
+      const result = await listFilteredIssues(workspaceRoot, filter);
+
+      // Handle error from BeadsResult
+      if (!result.success) {
+        setError(result.error ?? 'Failed to load issues');
+        return;
+      }
+
+      const loaded = result.data;
       setIssues(loaded);
       setLastRefresh(new Date());
 
@@ -69,8 +77,16 @@ export function App({ workspaceRoot }: AppProps) {
   loadIssuesRef.current = loadIssues;
 
   // Auto-refresh timer - uses ref to prevent interval recreation
+  // Wraps call in async handler to properly catch any errors
   useEffect(() => {
-    const interval = setInterval(() => loadIssuesRef.current(), REFRESH_INTERVAL_MS);
+    const interval = setInterval(async () => {
+      try {
+        await loadIssuesRef.current();
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        console.error(`[error] Auto-refresh failed: ${errorMessage}`);
+      }
+    }, REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
   }, []);
 

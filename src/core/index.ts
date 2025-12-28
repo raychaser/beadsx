@@ -16,7 +16,10 @@ export type {
   BeadsConfig,
   BeadsDependency,
   BeadsIssue,
+  BeadsResult,
   FilterMode,
+  IssueStatus,
+  IssueType,
   Logger,
   SortableIssue,
 } from './types';

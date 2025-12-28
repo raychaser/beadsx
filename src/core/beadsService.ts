@@ -5,7 +5,14 @@ import { execFile } from 'node:child_process';
 import { access } from 'node:fs/promises';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
-import type { BeadsConfig, BeadsDependency, BeadsIssue, FilterMode, Logger } from './types';
+import type {
+  BeadsConfig,
+  BeadsDependency,
+  BeadsIssue,
+  BeadsResult,
+  FilterMode,
+  Logger,
+} from './types';
 import { DEFAULT_RECENT_WINDOW_MINUTES, validateRecentWindowMinutes } from './utils';
 
 const execFileAsync = promisify(execFile);
@@ -95,8 +102,9 @@ function getBdCommand(): string {
   const customPath = config.commandPath;
 
   if (customPath) {
-    // Basic validation - reject paths with shell metacharacters
-    if (/[;&|<>`$]/.test(customPath)) {
+    // Validate against shell metacharacters and injection vectors
+    // Reject: shell operators, command substitution, quotes, newlines, null bytes
+    if (/[;&|<>`$"'\\()\n\r\0]/.test(customPath)) {
       log('Warning: Invalid commandPath contains shell metacharacters, using default');
       return 'bd';
     }
@@ -105,11 +113,11 @@ function getBdCommand(): string {
   return 'bd';
 }
 
-export async function listReadyIssues(workspaceRoot: string): Promise<BeadsIssue[]> {
+export async function listReadyIssues(workspaceRoot: string): Promise<BeadsResult<BeadsIssue[]>> {
   // Skip if beads is not initialized in this workspace
   if (!(await isBeadsInitialized(workspaceRoot))) {
     log('Beads not initialized in workspace, skipping bd ready');
-    return [];
+    return { success: true, data: [] };
   }
 
   const bdCmd = getBdCommand();
@@ -125,9 +133,10 @@ export async function listReadyIssues(workspaceRoot: string): Promise<BeadsIssue
     stdout = result.stdout;
     stderr = result.stderr;
   } catch (error) {
+    const errorMsg = `Failed to execute 'bd' command. Is it installed and in your PATH?`;
     log(`Error: Failed to execute 'bd ready': ${error}`);
-    warn(`Failed to execute 'bd' command. Is it installed and in your PATH?`);
-    return [];
+    warn(errorMsg);
+    return { success: false, data: [], error: errorMsg };
   }
 
   if (stderr) {
@@ -136,7 +145,7 @@ export async function listReadyIssues(workspaceRoot: string): Promise<BeadsIssue
 
   if (!stdout || !stdout.trim()) {
     log(`bd ready returned empty stdout`);
-    return [];
+    return { success: true, data: [] };
   }
 
   // Parse JSON output - separate error handling for parsing
@@ -144,27 +153,30 @@ export async function listReadyIssues(workspaceRoot: string): Promise<BeadsIssue
     const result = JSON.parse(stdout);
 
     if (result && Array.isArray(result.issues)) {
-      return result.issues;
+      return { success: true, data: result.issues };
     }
 
     if (Array.isArray(result)) {
-      return result;
+      return { success: true, data: result };
     }
 
     log(`Warning: bd ready returned unexpected format: ${typeof result}`);
-    return [];
+    return { success: true, data: [] };
   } catch (error) {
+    const errorMsg = `Failed to parse ready issues. Output may be corrupted.`;
     log(`Error: Failed to parse 'bd ready' output: ${error}`);
-    warn(`Failed to parse ready issues. Output may be corrupted.`);
-    return [];
+    warn(errorMsg);
+    return { success: false, data: [], error: errorMsg };
   }
 }
 
-export async function exportIssuesWithDeps(workspaceRoot: string): Promise<BeadsIssue[]> {
+export async function exportIssuesWithDeps(
+  workspaceRoot: string,
+): Promise<BeadsResult<BeadsIssue[]>> {
   // Skip if beads is not initialized in this workspace
   if (!(await isBeadsInitialized(workspaceRoot))) {
     log('Beads not initialized in workspace, skipping bd export');
-    return [];
+    return { success: true, data: [] };
   }
 
   const bdCmd = getBdCommand();
@@ -181,9 +193,10 @@ export async function exportIssuesWithDeps(workspaceRoot: string): Promise<Beads
     stdout = result.stdout;
     stderr = result.stderr;
   } catch (error) {
+    const errorMsg = `Failed to execute 'bd' command. Is it installed and in your PATH?`;
     log(`Error: Failed to execute 'bd export': ${error}`);
-    warn(`Failed to execute 'bd' command. Is it installed and in your PATH?`);
-    return [];
+    warn(errorMsg);
+    return { success: false, data: [], error: errorMsg };
   }
 
   if (stderr) {
@@ -194,7 +207,7 @@ export async function exportIssuesWithDeps(workspaceRoot: string): Promise<Beads
 
   if (!stdout || !stdout.trim()) {
     log(`bd export returned empty stdout`);
-    return [];
+    return { success: true, data: [] };
   }
 
   // Parse JSONL output - separate error handling for parsing
@@ -226,39 +239,42 @@ export async function exportIssuesWithDeps(workspaceRoot: string): Promise<Beads
     }
   }
 
-  // Warn user if significant parse failures occurred
+  // Always warn user about parse failures (not just >10%)
   if (parseErrors > 0) {
+    const errorMsg = `${parseErrors} issue(s) failed to load due to parsing errors.`;
     log(`Warning: ${parseErrors}/${lines.length} lines failed to parse`);
-    if (parseErrors > lines.length * 0.1) {
-      warn(`${parseErrors} issues failed to load. Data may be corrupted.`);
-    }
+    warn(errorMsg);
   }
 
   log(`parsed ${issues.length} issues successfully`);
 
-  return issues;
+  return { success: true, data: issues };
 }
 
 export async function listFilteredIssues(
   workspaceRoot: string,
   filter: FilterMode,
-): Promise<BeadsIssue[]> {
+): Promise<BeadsResult<BeadsIssue[]>> {
   log(`listFilteredIssues called with filter: ${filter}`);
 
   if (filter === 'ready') {
-    const readyIssues = await listReadyIssues(workspaceRoot);
-    log(`listFilteredIssues returning ${readyIssues.length} ready issues`);
-    return readyIssues;
+    const result = await listReadyIssues(workspaceRoot);
+    log(`listFilteredIssues returning ${result.data.length} ready issues`);
+    return result;
   }
 
   // Use export to get dependency info
-  const issues = await exportIssuesWithDeps(workspaceRoot);
+  const result = await exportIssuesWithDeps(workspaceRoot);
+  if (!result.success) {
+    return result;
+  }
+  const issues = result.data;
   log(`listFilteredIssues got ${issues.length} issues from export`);
 
   if (filter === 'open') {
     const openIssues = issues.filter((issue) => issue.status !== 'closed');
     log(`listFilteredIssues returning ${openIssues.length} open issues`);
-    return openIssues;
+    return { success: true, data: openIssues };
   }
 
   if (filter === 'recent') {
@@ -287,11 +303,11 @@ export async function listFilteredIssues(
     log(
       `listFilteredIssues returning ${recentIssues.length} recent issues (window: ${recentWindowMinutes}m)`,
     );
-    return recentIssues;
+    return { success: true, data: recentIssues };
   }
 
   log(`listFilteredIssues returning ${issues.length} issues (all)`);
-  return issues;
+  return { success: true, data: issues };
 }
 
 /**
