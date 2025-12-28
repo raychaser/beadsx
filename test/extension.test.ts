@@ -263,6 +263,7 @@ test.beforeAll(async () => {
     executablePath: vscodeExecutablePath,
     args,
     timeout: 60000,
+    cwd: workspacePath, // Ensure VSCode runs from the test workspace directory
   });
   console.log('Electron app launched');
 
