@@ -30,6 +30,11 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
 
+      - name: Install platform-specific OpenTUI packages
+        run: |
+          # Install platform-specific native bindings for cross-compilation
+          pnpm add -D @opentui/core-darwin-arm64 @opentui/core-darwin-x64 @opentui/core-linux-x64 @opentui/core-linux-arm64 @opentui/core-win32-x64
+
       - name: Build CLI binaries
         run: |
           mkdir -p dist
