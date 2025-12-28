@@ -9,8 +9,16 @@ import { configure, isBeadsInitialized, type Logger } from '../core';
 import { App } from './App';
 
 // Parse command line arguments
-// Note: Bun compiled binaries include the binary path in argv[2], so we filter it out
-const args = process.argv.slice(2).filter((arg) => !arg.includes('/$bunfs/') && !arg.endsWith('/bdx'));
+// Note: Bun compiled binaries include internal paths in argv, so we filter them out
+// We check for Bun's internal bunfs path and the exact binary path to avoid filtering legitimate args
+const binaryPath = process.argv[1];
+const args = process.argv.slice(2).filter((arg) => {
+  // Filter Bun's internal filesystem paths
+  if (arg.includes('/$bunfs/')) return false;
+  // Filter the exact binary path (Bun includes it in argv[2] when compiled)
+  if (binaryPath && arg === binaryPath.replace('/$bunfs/root/', '/')) return false;
+  return true;
+});
 const verbose = args.includes('--verbose') || args.includes('-v');
 const showHelp = args.includes('--help') || args.includes('-h');
 
