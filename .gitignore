@@ -33,3 +33,6 @@ test/**/*.js.map
 .beads/*.left.*
 .beads/deletions.jsonl
 .beads/deletions.jsonl.migrated
+
+# CLI build output
+dist/

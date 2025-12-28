@@ -118,10 +118,22 @@
     "test:integration": "tsc -p test/suite && vscode-test",
     "pretest:integration": "pnpm run bundle",
     "test:unit": "vitest run",
-    "prepare": "husky"
+    "prepare": "husky",
+    "cli:dev": "bun run src/cli/index.tsx",
+    "cli:build": "bun build --compile src/cli/index.tsx --outfile dist/bdx",
+    "cli:build:all": "mkdir -p dist && bun build --compile src/cli/index.tsx --outfile dist/bdx-darwin-arm64 --target bun-darwin-arm64 && bun build --compile src/cli/index.tsx --outfile dist/bdx-darwin-x64 --target bun-darwin-x64 && bun build --compile src/cli/index.tsx --outfile dist/bdx-linux-x64 --target bun-linux-x64 && bun build --compile src/cli/index.tsx --outfile dist/bdx-linux-arm64 --target bun-linux-arm64 && bun build --compile src/cli/index.tsx --outfile dist/bdx-windows-x64.exe --target bun-windows-x64"
+  },
+  "bin": {
+    "bdx": "./bin/bdx.js"
+  },
+  "dependencies": {
+    "@opentui/core": "^0.1.63",
+    "@opentui/react": "^0.1.63",
+    "react": "^19.0.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.8",
+    "@types/react": "^19.0.0",
     "@playwright/test": "^1.57.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^20.10.0",
