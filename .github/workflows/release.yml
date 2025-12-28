@@ -27,6 +27,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+
+      - name: Build CLI binaries
+        run: |
+          mkdir -p dist
+          bun build --compile src/cli/index.tsx --outfile dist/bdx-darwin-arm64 --target bun-darwin-arm64
+          bun build --compile src/cli/index.tsx --outfile dist/bdx-darwin-x64 --target bun-darwin-x64
+          bun build --compile src/cli/index.tsx --outfile dist/bdx-linux-x64 --target bun-linux-x64
+          bun build --compile src/cli/index.tsx --outfile dist/bdx-linux-arm64 --target bun-linux-arm64
+          bun build --compile src/cli/index.tsx --outfile dist/bdx-windows-x64.exe --target bun-windows-x64
+
       - name: Package extension
         run: pnpm run package
 
@@ -37,10 +49,12 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: beadsx-*.vsix
+          files: |
+            beadsx-*.vsix
+            dist/bdx-*
           generate_release_notes: true
           body: |
-            ## Installation
+            ## VS Code Extension
 
             **From Marketplace (recommended):**
             - [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=raychaser.beadsx)
@@ -52,6 +66,29 @@ jobs:
 
             ```bash
             code --install-extension beadsx-${{ steps.version.outputs.VERSION }}.vsix
+            ```
+
+            ## bdx CLI Tool
+
+            Standalone terminal UI for viewing beads issues. Download the binary for your platform:
+
+            | Platform | Binary |
+            |----------|--------|
+            | macOS (Apple Silicon) | `bdx-darwin-arm64` |
+            | macOS (Intel) | `bdx-darwin-x64` |
+            | Linux (x64) | `bdx-linux-x64` |
+            | Linux (ARM64) | `bdx-linux-arm64` |
+            | Windows (x64) | `bdx-windows-x64.exe` |
+
+            **Installation:**
+
+            ```bash
+            # macOS/Linux - download and make executable
+            chmod +x bdx-*
+            mv bdx-* /usr/local/bin/bdx
+
+            # Then run from any beads project:
+            bdx
             ```
 
       - name: Verify package
