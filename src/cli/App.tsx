@@ -16,11 +16,12 @@ import { StatusBar } from './components/StatusBar';
 
 interface AppProps {
   workspaceRoot: string;
+  onQuit?: () => void;
 }
 
 const REFRESH_INTERVAL_MS = 5000; // 5 seconds
 
-export function App({ workspaceRoot }: AppProps) {
+export function App({ workspaceRoot, onQuit }: AppProps) {
   const [issues, setIssues] = useState<BeadsIssue[]>([]);
   const [filter, setFilter] = useState<FilterMode>('recent');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -72,12 +73,14 @@ export function App({ workspaceRoot }: AppProps) {
     loadIssues();
   }, [loadIssues]);
 
-  // Use ref to avoid recreating interval when loadIssues changes
+  // Use refs to avoid recreating interval when callbacks change
   const loadIssuesRef = useRef(loadIssues);
   loadIssuesRef.current = loadIssues;
+  const setErrorRef = useRef(setError);
+  setErrorRef.current = setError;
 
-  // Auto-refresh timer - uses ref to prevent interval recreation
-  // Wraps call in async handler to properly catch any errors
+  // Auto-refresh timer - uses refs to prevent interval recreation
+  // Wraps call in async handler to properly catch any errors and update UI
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
@@ -85,6 +88,7 @@ export function App({ workspaceRoot }: AppProps) {
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
         console.error(`[error] Auto-refresh failed: ${errorMessage}`);
+        setErrorRef.current(`Auto-refresh failed: ${errorMessage}`);
       }
     }, REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
@@ -161,12 +165,20 @@ export function App({ workspaceRoot }: AppProps) {
 
     // Refresh
     else if (key === 'r') {
-      loadIssues();
+      loadIssues().catch((err) => {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        console.error(`[error] Manual refresh failed: ${errorMessage}`);
+        setError(`Manual refresh failed: ${errorMessage}`);
+      });
     }
 
-    // Quit
+    // Quit - use callback for proper cleanup, fallback to process.exit
     else if (key === 'q') {
-      process.exit(0);
+      if (onQuit) {
+        onQuit();
+      } else {
+        process.exit(0);
+      }
     }
   });
 

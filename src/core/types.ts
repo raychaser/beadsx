@@ -45,15 +45,14 @@ export interface Logger {
 }
 
 // Reusable interface for sortable issues
+// Uses IssueStatus | string for compatibility with external data that may have unknown statuses
 export interface SortableIssue {
-  status: string;
+  status: IssueStatus | string;
   priority: number;
   closed_at: string | null;
 }
 
-// Result type for operations that can fail
-export interface BeadsResult<T> {
-  success: boolean;
-  data: T;
-  error?: string;
-}
+// Result type for operations that can fail - discriminated union prevents illegal states
+export type BeadsResult<T> =
+  | { success: true; data: T; error?: never }
+  | { success: false; data: T; error: string };

@@ -126,10 +126,8 @@
   "bin": {
     "bdx": "./bin/bdx.js"
   },
-  "dependencies": {
-    "react": "^19.0.0"
-  },
   "devDependencies": {
+    "react": "^19.0.0",
     "@biomejs/biome": "^2.3.8",
     "@opentui/core": "^0.1.63",
     "@opentui/react": "^0.1.63",

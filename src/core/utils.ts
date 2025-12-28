@@ -4,7 +4,7 @@
 import type { SortableIssue } from './types';
 
 /**
- * Format a date string as relative time (e.g., "5m ago", "2h ago", "yesterday")
+ * Format a date string as relative time (e.g., "5s ago", "5m ago", "2h ago", "yesterday")
  * Returns empty string for invalid dates or future dates
  */
 export function formatTimeAgo(dateStr: string): string {
@@ -14,11 +14,13 @@ export function formatTimeAgo(dateStr: string): string {
 
   if (Number.isNaN(diffMs) || diffMs < 0) return '';
 
+  const seconds = Math.floor(diffMs / 1000);
   const minutes = Math.floor(diffMs / 60000);
   const hours = Math.floor(diffMs / 3600000);
   const days = Math.floor(diffMs / 86400000);
 
-  if (minutes < 1) return 'just now';
+  if (seconds < 2) return 'just now';
+  if (seconds < 60) return `${seconds}s ago`;
   if (minutes < 60) return `${minutes}m ago`;
   if (hours < 24) return `${hours}h ago`;
   if (days === 1) return 'yesterday';

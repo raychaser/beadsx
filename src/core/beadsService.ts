@@ -22,10 +22,12 @@ const beadsInitializedCache = new Map<string, boolean>();
 
 // Module-level configuration and logger
 let config: BeadsConfig = {};
+// Default logger writes warnings and errors to console to prevent silent failures
+// Debug logs are silent by default until configure() is called with a custom logger
 let logger: Logger = {
   log: () => {},
-  warn: () => {},
-  error: () => {},
+  warn: (msg: string) => console.warn(`[beadsService] ${msg}`),
+  error: (msg: string) => console.error(`[beadsService] ${msg}`),
 };
 
 // Optional user notification callback (for VS Code warnings, CLI messages, etc.)
@@ -85,8 +87,12 @@ export async function isBeadsInitialized(workspaceRoot: string): Promise<boolean
       beadsInitializedCache.set(workspaceRoot, false);
       return false;
     }
-    // Other errors (permission denied, etc.) - log warning, don't cache to allow retry
-    log(`Warning: Could not check beads initialization: ${error}`);
+    // Other errors (permission denied, etc.) - warn user, don't cache to allow retry
+    const errorCode =
+      error instanceof Error && 'code' in error ? (error as { code: string }).code : 'unknown';
+    warn(
+      `Cannot access .beads directory (${errorCode}): ${error instanceof Error ? error.message : error}`,
+    );
     return false;
   }
 }
@@ -239,11 +245,13 @@ export async function exportIssuesWithDeps(
     }
   }
 
-  // Always warn user about parse failures (not just >10%)
+  // Warn user about parse failures and return partial success as failure
   if (parseErrors > 0) {
     const errorMsg = `${parseErrors} issue(s) failed to load due to parsing errors.`;
     log(`Warning: ${parseErrors}/${lines.length} lines failed to parse`);
     warn(errorMsg);
+    // Return partial data with error - callers can still use data but know it's incomplete
+    return { success: false, data: issues, error: errorMsg };
   }
 
   log(`parsed ${issues.length} issues successfully`);

@@ -29,9 +29,16 @@ describe('formatTimeAgo', () => {
     expect(formatTimeAgo('2025-01-16T12:00:00.000Z')).toBe('');
   });
 
-  it('returns "just now" for less than 1 minute ago', () => {
-    expect(formatTimeAgo('2025-01-15T11:59:30.000Z')).toBe('just now');
-    expect(formatTimeAgo('2025-01-15T11:59:59.000Z')).toBe('just now');
+  it('returns "just now" for less than 2 seconds ago', () => {
+    expect(formatTimeAgo('2025-01-15T11:59:59.000Z')).toBe('just now'); // 1s ago
+    expect(formatTimeAgo('2025-01-15T11:59:59.500Z')).toBe('just now'); // 0.5s ago
+  });
+
+  it('returns seconds ago for 2-59 seconds', () => {
+    expect(formatTimeAgo('2025-01-15T11:59:58.000Z')).toBe('2s ago');
+    expect(formatTimeAgo('2025-01-15T11:59:55.000Z')).toBe('5s ago');
+    expect(formatTimeAgo('2025-01-15T11:59:30.000Z')).toBe('30s ago');
+    expect(formatTimeAgo('2025-01-15T11:59:01.000Z')).toBe('59s ago');
   });
 
   it('returns minutes ago for 1-59 minutes', () => {
