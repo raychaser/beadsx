@@ -44,6 +44,17 @@ jobs:
           bun build --compile src/cli/index.tsx --outfile dist/bdx-linux-arm64 --target bun-linux-arm64
           bun build --compile src/cli/index.tsx --outfile dist/bdx-windows-x64.exe --target bun-windows-x64
 
+      - name: Restore clean dependencies
+        run: |
+          # Remove platform-specific packages that break vsce verification
+          rm -rf node_modules
+          pnpm install
+
+      - name: Update package version from tag
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          npm pkg set version=$VERSION
+
       - name: Package extension
         run: pnpm run package
 
