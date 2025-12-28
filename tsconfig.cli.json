@@ -1,9 +1,9 @@
 {
   "compilerOptions": {
-    "module": "Node16",
+    "module": "ESNext",
     "target": "ES2022",
     "lib": ["ES2022"],
-    "outDir": "out",
+    "outDir": "dist/cli",
     "rootDir": "src",
     "sourceMap": true,
     "strict": true,
@@ -11,7 +11,10 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "moduleResolution": "Node16"
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "jsxImportSource": "react"
   },
-  "exclude": ["node_modules", ".vscode-test", "test", "*.config.ts", "**/*.test.ts"]
+  "include": ["src/core/**/*", "src/cli/**/*"],
+  "exclude": ["node_modules", "**/*.test.ts"]
 }

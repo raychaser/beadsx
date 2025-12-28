@@ -118,10 +118,21 @@
     "test:integration": "tsc -p test/suite && vscode-test",
     "pretest:integration": "pnpm run bundle",
     "test:unit": "vitest run",
-    "prepare": "husky"
+    "prepare": "husky",
+    "cli:dev": "bun run src/cli/index.tsx",
+    "cli:build": "esbuild ./src/cli/index.tsx --bundle --outfile=dist/cli/index.js --format=esm --platform=node --external:@opentui/core --external:react"
+  },
+  "bin": {
+    "bdx": "./bin/bdx.js"
+  },
+  "dependencies": {
+    "@opentui/core": "^0.1.63",
+    "@opentui/react": "^0.1.63",
+    "react": "^19.0.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.8",
+    "@types/react": "^19.0.0",
     "@playwright/test": "^1.57.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^20.10.0",
