@@ -1,7 +1,55 @@
 // Utility functions extracted for testability
 // Shared between VS Code extension and CLI
 
-import type { SortableIssue } from './types';
+import type { BeadsIssue, SortableIssue } from './types';
+
+/**
+ * Compute depth of each issue in a hierarchy.
+ * Handles circular references by treating cycles as roots (depth 0).
+ * Returns a Map from issue ID to depth.
+ */
+export function computeIssueDepths(issues: BeadsIssue[]): Map<string, number> {
+  const depthMap = new Map<string, number>();
+  const issueMap = new Map(issues.map((i) => [i.id, i]));
+
+  const computeDepth = (issue: BeadsIssue, visiting: Set<string>): number => {
+    // Return cached result if already computed
+    if (depthMap.has(issue.id)) return depthMap.get(issue.id)!;
+
+    // No parent means root level
+    if (!issue.parentId) {
+      depthMap.set(issue.id, 0);
+      return 0;
+    }
+
+    // Detect circular reference - treat as root if cycle found
+    if (visiting.has(issue.id)) {
+      depthMap.set(issue.id, 0);
+      return 0;
+    }
+
+    // Parent not in issue list - treat as root
+    const parent = issueMap.get(issue.parentId);
+    if (!parent) {
+      depthMap.set(issue.id, 0);
+      return 0;
+    }
+
+    // Recurse to parent with cycle detection
+    visiting.add(issue.id);
+    const depth = computeDepth(parent, visiting) + 1;
+    visiting.delete(issue.id);
+    depthMap.set(issue.id, depth);
+    return depth;
+  };
+
+  // Compute depth for all issues
+  for (const issue of issues) {
+    computeDepth(issue, new Set());
+  }
+
+  return depthMap;
+}
 
 /**
  * Format a date string as relative time (e.g., "5s ago", "5m ago", "2h ago", "yesterday")
