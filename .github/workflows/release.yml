@@ -50,17 +50,21 @@ jobs:
           rm -rf node_modules
           pnpm install
 
-      - name: Update package version from tag
+      - name: Extract and validate version from tag
+        id: version
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
+          # Validate semver format (major.minor.patch with optional prerelease/build)
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$ ]]; then
+            echo "::error::Invalid semver version: $VERSION"
+            echo "::error::Expected format: X.Y.Z or X.Y.Z-prerelease or X.Y.Z+build"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           npm pkg set version=$VERSION
 
       - name: Package extension
         run: pnpm run package
-
-      - name: Get version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
@@ -106,9 +110,6 @@ jobs:
             # Then run from any beads project:
             bdx
             ```
-
-      - name: Verify package
-        run: pnpm exec vsce ls
 
       - name: Publish to VS Code Marketplace
         env:

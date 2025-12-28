@@ -8,12 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@opentui/core':
-        specifier: ^0.1.63
-        version: 0.1.63(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)
-      '@opentui/react':
-        specifier: ^0.1.63
-        version: 0.1.63(react@19.2.3)(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)
       react:
         specifier: ^19.0.0
         version: 19.2.3
@@ -21,6 +15,12 @@ importers:
       '@biomejs/biome':
         specifier: ^2.3.8
         version: 2.3.8
+      '@opentui/core':
+        specifier: ^0.1.63
+        version: 0.1.63(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)
+      '@opentui/react':
+        specifier: ^0.1.63
+        version: 0.1.63(react@19.2.3)(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)
       '@playwright/test':
         specifier: ^1.57.0
         version: 1.57.0
