@@ -1,5 +1,6 @@
 // Single issue row component
 
+import { useTerminalDimensions } from '@opentui/react';
 import type { BeadsIssue } from '../../core';
 import { formatTimeAgo } from '../../core';
 
@@ -37,6 +38,8 @@ export function IssueRow({
   isSelected,
   isLastChild,
 }: IssueRowProps) {
+  const { width: terminalWidth } = useTerminalDimensions();
+
   // Build tree prefix
   const prefix = buildTreePrefix(depth, hasChildren, isExpanded, isLastChild);
 
@@ -56,11 +59,27 @@ export function IssueRow({
   // Shorten ID (take last part after hyphen)
   const shortId = issue.id.includes('-') ? issue.id.split('-').pop() : issue.id;
 
+  // Calculate available width for title
+  // Format: [prefix][status][space][priority][space][type][space][id][space][title][optional: space + (timeAgo)]
+  const prefixLen = prefix.length;
+  const statusLen = 1; // status icon
+  const priorityLen = priorityStr.length;
+  const typeLen = 2; // emoji typically renders as 2 chars width
+  const idLen = (shortId || '').length;
+  const spacesLen = 4; // 4 spaces between elements
+  const timeAgoLen = timeAgo ? timeAgo.length + 3 : 0; // " (timeAgo)"
+
+  const fixedWidth = prefixLen + statusLen + priorityLen + typeLen + idLen + spacesLen + timeAgoLen;
+  const availableWidth = Math.max(0, terminalWidth - fixedWidth);
+
+  // Truncate title if needed
+  const displayTitle = truncateTitle(issue.title, availableWidth);
+
   // Build the row
   const bgColor = isSelected ? 'blue' : undefined;
 
   return (
-    <box>
+    <box style={{ height: 1 }}>
       <text bg={bgColor}>
         <span fg="gray">{prefix}</span>
         <span fg={statusColor}>{statusIcon}</span>
@@ -71,7 +90,7 @@ export function IssueRow({
         <span> </span>
         <span fg="gray">{shortId}</span>
         <span> </span>
-        <span fg={issue.status === 'closed' ? 'gray' : 'white'}>{issue.title}</span>
+        <span fg={issue.status === 'closed' ? 'gray' : 'white'}>{displayTitle}</span>
         {timeAgo && <span fg="gray"> ({timeAgo})</span>}
       </text>
     </box>
@@ -123,4 +142,10 @@ function getStatusColor(status: string): string {
     default:
       return 'white';
   }
+}
+
+function truncateTitle(title: string, maxWidth: number): string {
+  if (title.length <= maxWidth) return title;
+  if (maxWidth <= 1) return '\u2026'; // Unicode ellipsis
+  return title.slice(0, maxWidth - 1) + '\u2026';
 }
