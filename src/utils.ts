@@ -2,6 +2,7 @@
 
 export type { SortableIssue } from './core/types';
 export {
+  computeIssueDepths,
   DEFAULT_RECENT_WINDOW_MINUTES,
   formatTimeAgo,
   MAX_RECENT_WINDOW_MINUTES,

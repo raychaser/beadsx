@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { BeadsIssue } from './core/types';
 import {
+  computeIssueDepths,
   DEFAULT_RECENT_WINDOW_MINUTES,
   formatTimeAgo,
   MAX_RECENT_WINDOW_MINUTES,
@@ -7,6 +9,153 @@ import {
   sortIssues,
   validateRecentWindowMinutes,
 } from './utils';
+
+// Helper to create minimal BeadsIssue for testing
+function createTestIssue(id: string, parentId?: string): BeadsIssue {
+  return {
+    id,
+    title: `Issue ${id}`,
+    description: '',
+    status: 'open',
+    priority: 2,
+    issue_type: 'task',
+    created_at: '2025-01-15T12:00:00.000Z',
+    updated_at: '2025-01-15T12:00:00.000Z',
+    closed_at: null,
+    assignee: null,
+    labels: [],
+    parentId,
+  };
+}
+
+describe('computeIssueDepths', () => {
+  it('returns empty map for empty array', () => {
+    const result = computeIssueDepths([]);
+    expect(result.size).toBe(0);
+  });
+
+  it('assigns depth 0 to root issues (no parent)', () => {
+    const issues = [createTestIssue('A'), createTestIssue('B'), createTestIssue('C')];
+    const result = computeIssueDepths(issues);
+    expect(result.get('A')).toBe(0);
+    expect(result.get('B')).toBe(0);
+    expect(result.get('C')).toBe(0);
+  });
+
+  it('computes correct depth for simple parent-child hierarchy', () => {
+    const issues = [
+      createTestIssue('root'),
+      createTestIssue('child', 'root'),
+      createTestIssue('grandchild', 'child'),
+    ];
+    const result = computeIssueDepths(issues);
+    expect(result.get('root')).toBe(0);
+    expect(result.get('child')).toBe(1);
+    expect(result.get('grandchild')).toBe(2);
+  });
+
+  it('handles multiple trees in the same issue list', () => {
+    const issues = [
+      createTestIssue('tree1-root'),
+      createTestIssue('tree1-child', 'tree1-root'),
+      createTestIssue('tree2-root'),
+      createTestIssue('tree2-child', 'tree2-root'),
+    ];
+    const result = computeIssueDepths(issues);
+    expect(result.get('tree1-root')).toBe(0);
+    expect(result.get('tree1-child')).toBe(1);
+    expect(result.get('tree2-root')).toBe(0);
+    expect(result.get('tree2-child')).toBe(1);
+  });
+
+  it('treats issue with missing parent as root (depth 0)', () => {
+    // child's parent 'orphan-parent' is not in the issue list
+    const issues = [createTestIssue('child', 'orphan-parent')];
+    const result = computeIssueDepths(issues);
+    expect(result.get('child')).toBe(0);
+  });
+
+  // Critical circular reference tests
+  describe('circular reference detection', () => {
+    it('handles direct self-reference (A -> A) without infinite loop', () => {
+      const selfRef = createTestIssue('A', 'A');
+      const result = computeIssueDepths([selfRef]);
+      // Should terminate - the recursive call detects cycle and returns 0,
+      // so outer call returns 0 + 1 = 1
+      expect(result.get('A')).toBe(1);
+    });
+
+    it('handles simple cycle (A -> B -> A) without infinite loop', () => {
+      const issues = [createTestIssue('A', 'B'), createTestIssue('B', 'A')];
+      const result = computeIssueDepths(issues);
+      // Should terminate - both treated as roots or shallow depth
+      expect(result.size).toBe(2);
+      // One will be computed first and have depth 0, the other might have depth 1
+      // but neither should cause infinite loop
+      expect(result.has('A')).toBe(true);
+      expect(result.has('B')).toBe(true);
+    });
+
+    it('handles longer cycle (A -> B -> C -> A) without infinite loop', () => {
+      const issues = [
+        createTestIssue('A', 'C'),
+        createTestIssue('B', 'A'),
+        createTestIssue('C', 'B'),
+      ];
+      const result = computeIssueDepths(issues);
+      // Should terminate - all issues should have a depth assigned
+      expect(result.size).toBe(3);
+      expect(result.has('A')).toBe(true);
+      expect(result.has('B')).toBe(true);
+      expect(result.has('C')).toBe(true);
+    });
+
+    it('handles cycle with a valid root attached', () => {
+      // root -> child -> cycleA -> cycleB -> cycleA
+      const issues = [
+        createTestIssue('root'),
+        createTestIssue('child', 'root'),
+        createTestIssue('cycleA', 'cycleB'),
+        createTestIssue('cycleB', 'cycleA'),
+      ];
+      const result = computeIssueDepths(issues);
+      expect(result.get('root')).toBe(0);
+      expect(result.get('child')).toBe(1);
+      // Cycle issues should still be handled without infinite loop
+      expect(result.has('cycleA')).toBe(true);
+      expect(result.has('cycleB')).toBe(true);
+    });
+  });
+
+  it('handles deep hierarchy (5 levels)', () => {
+    const issues = [
+      createTestIssue('L0'),
+      createTestIssue('L1', 'L0'),
+      createTestIssue('L2', 'L1'),
+      createTestIssue('L3', 'L2'),
+      createTestIssue('L4', 'L3'),
+    ];
+    const result = computeIssueDepths(issues);
+    expect(result.get('L0')).toBe(0);
+    expect(result.get('L1')).toBe(1);
+    expect(result.get('L2')).toBe(2);
+    expect(result.get('L3')).toBe(3);
+    expect(result.get('L4')).toBe(4);
+  });
+
+  it('handles issues processed in any order', () => {
+    // Deliberately put child before parent
+    const issues = [
+      createTestIssue('grandchild', 'child'),
+      createTestIssue('child', 'root'),
+      createTestIssue('root'),
+    ];
+    const result = computeIssueDepths(issues);
+    expect(result.get('root')).toBe(0);
+    expect(result.get('child')).toBe(1);
+    expect(result.get('grandchild')).toBe(2);
+  });
+});
 
 describe('formatTimeAgo', () => {
   beforeEach(() => {

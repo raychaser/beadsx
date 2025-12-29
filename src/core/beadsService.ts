@@ -132,7 +132,9 @@ export async function listReadyIssues(workspaceRoot: string): Promise<BeadsResul
   let stdout: string;
   let stderr: string;
   try {
-    const result = await execFileAsync(bdCmd, ['ready', '--json'], {
+    // Use --no-db in JSONL mode to prevent auto-discovery of parent databases
+    const cmdArgs = config.useJsonlMode ? ['--no-db', 'ready', '--json'] : ['ready', '--json'];
+    const result = await execFileAsync(bdCmd, cmdArgs, {
       cwd: workspaceRoot,
       timeout: 30000, // 30 second timeout to prevent hanging
     });
@@ -192,7 +194,9 @@ export async function exportIssuesWithDeps(
   let stdout: string;
   let stderr: string;
   try {
-    const result = await execFileAsync(bdCmd, ['export'], {
+    // Use --no-db in JSONL mode to prevent auto-discovery of parent databases
+    const cmdArgs = config.useJsonlMode ? ['--no-db', 'export'] : ['export'];
+    const result = await execFileAsync(bdCmd, cmdArgs, {
       cwd: workspaceRoot,
       timeout: 30000, // 30 second timeout to prevent hanging
     });

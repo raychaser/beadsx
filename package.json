@@ -97,6 +97,11 @@
           "minimum": 1,
           "maximum": 10080,
           "description": "Time window in minutes for 'Recent Issues' filter to include closed issues (default: 60 = 1 hour)"
+        },
+        "beadsx.useJsonlMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use JSONL-only mode (--no-db flag). Prevents bd from auto-discovering databases in parent directories."
         }
       }
     }
