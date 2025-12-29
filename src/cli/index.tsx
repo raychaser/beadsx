@@ -10,13 +10,15 @@ import { App } from './App';
 
 // Parse command line arguments
 // Note: Bun compiled binaries include internal paths in argv, so we filter them out
-// We check for Bun's internal bunfs path and the exact binary path to avoid filtering legitimate args
-const binaryPath = process.argv[1];
+// argv[2] contains the invocation path (e.g., "./bdx" or "/path/to/bdx") which must be filtered
+// We use process.execPath to get the real filesystem path for comparison
+const realBinaryPath = path.resolve(process.execPath);
 const args = process.argv.slice(2).filter((arg) => {
   // Filter Bun's internal filesystem paths
   if (arg.includes('/$bunfs/')) return false;
-  // Filter the exact binary path (Bun includes it in argv[2] when compiled)
-  if (binaryPath && arg === binaryPath.replace('/$bunfs/root/', '/')) return false;
+  // Filter the binary path (Bun includes it in argv[2] when compiled)
+  // Resolve to handle relative paths like "./bdx"
+  if (path.resolve(arg) === realBinaryPath) return false;
   return true;
 });
 const verbose = args.includes('--verbose') || args.includes('-v');
