@@ -419,4 +419,18 @@ describe('buildBdArgs', () => {
     buildBdArgs(original);
     expect(original).toEqual(originalCopy);
   });
+
+  it('handles non-array input gracefully when useJsonlMode is true', () => {
+    configure({ useJsonlMode: true });
+    // @ts-expect-error - Testing runtime behavior with invalid input
+    const result = buildBdArgs(null);
+    expect(result).toEqual(['--no-db']);
+  });
+
+  it('handles non-array input gracefully when useJsonlMode is false', () => {
+    configure({ useJsonlMode: false });
+    // @ts-expect-error - Testing runtime behavior with invalid input
+    const result = buildBdArgs(undefined);
+    expect(result).toEqual([]);
+  });
 });

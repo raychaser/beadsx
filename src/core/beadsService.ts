@@ -111,7 +111,7 @@ function getBdCommand(): string {
     // Validate against shell metacharacters and injection vectors
     // Reject: shell operators, command substitution, quotes, newlines, null bytes
     if (/[;&|<>`$"'\\()\n\r\0]/.test(customPath)) {
-      log('Warning: Invalid commandPath contains shell metacharacters, using default');
+      warn('Invalid commandPath contains shell metacharacters, using default "bd"');
       return 'bd';
     }
     return customPath;
@@ -124,6 +124,11 @@ function getBdCommand(): string {
  * This ensures consistent handling of JSONL mode across all bd command invocations.
  */
 export function buildBdArgs(args: string[]): string[] {
+  // Defensive guard: ensure args is an array to prevent runtime errors from spread operator
+  if (!Array.isArray(args)) {
+    warn('buildBdArgs called with non-array argument, using empty array');
+    return config.useJsonlMode ? ['--no-db'] : [];
+  }
   if (config.useJsonlMode) {
     return ['--no-db', ...args];
   }
