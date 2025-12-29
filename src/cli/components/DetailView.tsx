@@ -2,6 +2,7 @@
 
 import type { BeadsIssue } from '../../core';
 import { formatTimeAgo, getAllAncestors, getChildren, sortIssues } from '../../core';
+import { getStatusColor, getStatusIcon, getTypeIcon } from '../constants';
 
 interface DetailViewProps {
   issue: BeadsIssue;
@@ -9,41 +10,26 @@ interface DetailViewProps {
   selectedChildIndex: number;
 }
 
-// Status indicators (same as IssueRow)
-const STATUS_ICONS: Record<string, string> = {
-  closed: '✓',
-  in_progress: '●',
-  blocked: '✖',
-  open: '○',
-};
-
-// Type icons (same as IssueRow)
-const TYPE_ICONS: Record<string, string> = {
-  bug: '🐛',
-  feature: '💡',
-  epic: '🚀',
-  chore: '🔧',
-  task: '📋',
-};
-
-function getStatusColor(status: string): string {
-  switch (status) {
-    case 'closed':
-      return 'green';
-    case 'in_progress':
-      return 'yellow';
-    case 'blocked':
-      return 'red';
-    default:
-      return 'white';
-  }
-}
-
+/**
+ * Format a date string for display.
+ * Validates the date and logs warnings for invalid values.
+ */
 function formatDate(dateStr: string): string {
+  if (!dateStr) return '';
+
+  const date = new Date(dateStr);
+
+  // Date constructor doesn't throw - it returns Invalid Date
+  if (Number.isNaN(date.getTime())) {
+    console.warn(`[DetailView] Invalid date string: "${dateStr}"`);
+    return dateStr;
+  }
+
   try {
-    const date = new Date(dateStr);
     return date.toLocaleString();
-  } catch {
+  } catch (err) {
+    // toLocaleString can throw RangeError for extreme dates
+    console.warn(`[DetailView] Failed to format date "${dateStr}": ${err}`);
     return dateStr;
   }
 }
@@ -54,12 +40,9 @@ export function DetailView({ issue, allIssues, selectedChildIndex }: DetailViewP
   const openChildren = children.filter((c) => c.status !== 'closed');
   const closedChildren = children.filter((c) => c.status === 'closed');
 
-  // Build flat list of children for selection (open first, then closed)
-  const selectableChildren = [...openChildren, ...closedChildren];
-
-  const statusIcon = STATUS_ICONS[issue.status] || '○';
+  const statusIcon = getStatusIcon(issue.status);
   const statusColor = getStatusColor(issue.status);
-  const typeIcon = TYPE_ICONS[issue.issue_type] || '📋';
+  const typeIcon = getTypeIcon(issue.issue_type);
 
   return (
     <box flexDirection="column">
@@ -175,9 +158,8 @@ export function DetailView({ issue, allIssues, selectedChildIndex }: DetailViewP
                 <text fg="gray">Open ({openChildren.length})</text>
               </box>
               {openChildren.map((child, idx) => {
-                const globalIdx = idx;
-                const isSelected = globalIdx === selectedChildIndex;
-                const childStatusIcon = STATUS_ICONS[child.status] || '○';
+                const isSelected = idx === selectedChildIndex;
+                const childStatusIcon = getStatusIcon(child.status);
                 const childStatusColor = getStatusColor(child.status);
                 const shortId = child.id.includes('-') ? child.id.split('-').pop() : child.id;
                 const timeAgo =
@@ -209,7 +191,7 @@ export function DetailView({ issue, allIssues, selectedChildIndex }: DetailViewP
               {closedChildren.map((child, idx) => {
                 const globalIdx = openChildren.length + idx;
                 const isSelected = globalIdx === selectedChildIndex;
-                const childStatusIcon = STATUS_ICONS[child.status] || '○';
+                const childStatusIcon = getStatusIcon(child.status);
                 const childStatusColor = getStatusColor(child.status);
                 const shortId = child.id.includes('-') ? child.id.split('-').pop() : child.id;
                 const timeAgo =
@@ -259,8 +241,24 @@ export function getSelectedChild(
   selectedChildIndex: number,
 ): BeadsIssue | null {
   const children = sortIssues(getChildren(issue, allIssues));
+
+  // No children is a legitimate case
+  if (children.length === 0) {
+    return null;
+  }
+
+  // Build selectable list (open first, then closed)
   const openChildren = children.filter((c) => c.status !== 'closed');
   const closedChildren = children.filter((c) => c.status === 'closed');
   const selectableChildren = [...openChildren, ...closedChildren];
-  return selectableChildren[selectedChildIndex] || null;
+
+  // Out-of-bounds index is a programming error - log it
+  if (selectedChildIndex < 0 || selectedChildIndex >= selectableChildren.length) {
+    console.warn(
+      `[DetailView] selectedChildIndex (${selectedChildIndex}) out of bounds for ${selectableChildren.length} children`,
+    );
+    return null;
+  }
+
+  return selectableChildren[selectedChildIndex];
 }
