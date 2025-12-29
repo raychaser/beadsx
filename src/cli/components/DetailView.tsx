@@ -2,12 +2,42 @@
 
 import type { BeadsIssue } from '../../core';
 import { formatTimeAgo, getAllAncestors, getChildren, sortIssues } from '../../core';
-import { getStatusColor, getStatusIcon, getTypeIcon } from '../constants';
+import { getShortId, getStatusColor, getStatusIcon, getTypeIcon } from '../constants';
 
 interface DetailViewProps {
   issue: BeadsIssue;
   allIssues: BeadsIssue[];
   selectedChildIndex: number;
+}
+
+interface ChildIssueRowProps {
+  child: BeadsIssue;
+  isSelected: boolean;
+}
+
+/**
+ * Renders a single child issue row with status icon, ID, and title.
+ */
+function ChildIssueRow({ child, isSelected }: ChildIssueRowProps) {
+  const statusIcon = getStatusIcon(child.status);
+  const statusColor = getStatusColor(child.status);
+  const shortId = getShortId(child.id);
+  const timeAgo = child.status === 'closed' && child.closed_at ? ` (${formatTimeAgo(child.closed_at)})` : '';
+  const titleColor = child.status === 'closed' ? 'gray' : 'white';
+
+  return (
+    <box key={child.id} style={{ height: 1 }}>
+      <text bg={isSelected ? 'blue' : undefined}>
+        <span>  </span>
+        <span fg={statusColor}>{statusIcon}</span>
+        <span> </span>
+        <span fg="gray">{shortId}</span>
+        <span> </span>
+        <span fg={titleColor}>{child.title}</span>
+        {timeAgo && <span fg="gray">{timeAgo}</span>}
+      </text>
+    </box>
+  );
 }
 
 /**
@@ -157,28 +187,9 @@ export function DetailView({ issue, allIssues, selectedChildIndex }: DetailViewP
               <box style={{ height: 1 }}>
                 <text fg="gray">Open ({openChildren.length})</text>
               </box>
-              {openChildren.map((child, idx) => {
-                const isSelected = idx === selectedChildIndex;
-                const childStatusIcon = getStatusIcon(child.status);
-                const childStatusColor = getStatusColor(child.status);
-                const shortId = child.id.includes('-') ? child.id.split('-').pop() : child.id;
-                const timeAgo =
-                  child.status === 'closed' && child.closed_at ? ` (${formatTimeAgo(child.closed_at)})` : '';
-
-                return (
-                  <box key={child.id} style={{ height: 1 }}>
-                    <text bg={isSelected ? 'blue' : undefined}>
-                      <span>  </span>
-                      <span fg={childStatusColor}>{childStatusIcon}</span>
-                      <span> </span>
-                      <span fg="gray">{shortId}</span>
-                      <span> </span>
-                      <span fg={child.status === 'closed' ? 'gray' : 'white'}>{child.title}</span>
-                      {timeAgo && <span fg="gray">{timeAgo}</span>}
-                    </text>
-                  </box>
-                );
-              })}
+              {openChildren.map((child, idx) => (
+                <ChildIssueRow key={child.id} child={child} isSelected={idx === selectedChildIndex} />
+              ))}
             </>
           )}
 
@@ -188,29 +199,13 @@ export function DetailView({ issue, allIssues, selectedChildIndex }: DetailViewP
               <box style={{ height: 1 }}>
                 <text fg="gray">Closed ({closedChildren.length})</text>
               </box>
-              {closedChildren.map((child, idx) => {
-                const globalIdx = openChildren.length + idx;
-                const isSelected = globalIdx === selectedChildIndex;
-                const childStatusIcon = getStatusIcon(child.status);
-                const childStatusColor = getStatusColor(child.status);
-                const shortId = child.id.includes('-') ? child.id.split('-').pop() : child.id;
-                const timeAgo =
-                  child.status === 'closed' && child.closed_at ? ` (${formatTimeAgo(child.closed_at)})` : '';
-
-                return (
-                  <box key={child.id} style={{ height: 1 }}>
-                    <text bg={isSelected ? 'blue' : undefined}>
-                      <span>  </span>
-                      <span fg={childStatusColor}>{childStatusIcon}</span>
-                      <span> </span>
-                      <span fg="gray">{shortId}</span>
-                      <span> </span>
-                      <span fg="gray">{child.title}</span>
-                      {timeAgo && <span fg="gray">{timeAgo}</span>}
-                    </text>
-                  </box>
-                );
-              })}
+              {closedChildren.map((child, idx) => (
+                <ChildIssueRow
+                  key={child.id}
+                  child={child}
+                  isSelected={openChildren.length + idx === selectedChildIndex}
+                />
+              ))}
             </>
           )}
         </>

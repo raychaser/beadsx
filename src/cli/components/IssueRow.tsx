@@ -3,7 +3,7 @@
 import { useTerminalDimensions } from '@opentui/react';
 import type { BeadsIssue } from '../../core';
 import { formatTimeAgo, truncateTitle } from '../../core';
-import { getStatusColor, getStatusIcon, getTypeIcon } from '../constants';
+import { getShortId, getStatusColor, getStatusIcon, getTypeIcon } from '../constants';
 
 interface IssueRowProps {
   issue: BeadsIssue;
@@ -41,7 +41,7 @@ export function IssueRow({
   const timeAgo = issue.status === 'closed' && issue.closed_at ? formatTimeAgo(issue.closed_at) : '';
 
   // Shorten ID (take last part after hyphen)
-  const shortId = issue.id.includes('-') ? issue.id.split('-').pop() : issue.id;
+  const shortId = getShortId(issue.id);
 
   // Calculate available width for title
   // Format: [prefix][status][space][priority][space][type][space][id][space][title][optional: space + (timeAgo)]
