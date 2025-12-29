@@ -1,6 +1,7 @@
 // Core exports - shared between VS Code extension and CLI
 
 export {
+  buildBdArgs,
   clearBeadsInitializedCache,
   configure,
   exportIssuesWithDeps,

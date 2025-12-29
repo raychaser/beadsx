@@ -21,6 +21,7 @@ const args = process.argv.slice(2).filter((arg) => {
 });
 const verbose = args.includes('--verbose') || args.includes('-v');
 const showHelp = args.includes('--help') || args.includes('-h');
+const noDb = args.includes('--no-db');
 
 // Filter out flags to get workspace path
 const nonFlagArgs = args.filter((arg) => !arg.startsWith('-'));
@@ -36,6 +37,7 @@ if (showHelp) {
   console.log('Options:');
   console.log('  -h, --help     Show this help message');
   console.log('  -v, --verbose  Enable verbose logging');
+  console.log('  --no-db        Use JSONL mode (prevents auto-discovery of parent databases)');
   console.log('');
   console.log('Keyboard shortcuts:');
   console.log('  j/k or arrows  Navigate up/down');
@@ -57,7 +59,7 @@ const logger: Logger = {
   error: (msg) => console.error(`[error] ${msg}`),
 };
 
-configure({}, logger, (message, type) => {
+configure({ useJsonlMode: noDb }, logger, (message, type) => {
   if (type === 'error') {
     console.error(`Error: ${message}`);
   } else if (type === 'warn') {

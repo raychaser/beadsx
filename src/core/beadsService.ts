@@ -111,12 +111,28 @@ function getBdCommand(): string {
     // Validate against shell metacharacters and injection vectors
     // Reject: shell operators, command substitution, quotes, newlines, null bytes
     if (/[;&|<>`$"'\\()\n\r\0]/.test(customPath)) {
-      log('Warning: Invalid commandPath contains shell metacharacters, using default');
+      warn('Invalid commandPath contains shell metacharacters, using default "bd"');
       return 'bd';
     }
     return customPath;
   }
   return 'bd';
+}
+
+/**
+ * Build command arguments for bd, prepending --no-db when useJsonlMode is enabled.
+ * This ensures consistent handling of JSONL mode across all bd command invocations.
+ */
+export function buildBdArgs(args: string[]): string[] {
+  // Defensive guard: ensure args is an array to prevent runtime errors from spread operator
+  if (!Array.isArray(args)) {
+    warn('buildBdArgs called with non-array argument, using empty array');
+    return config.useJsonlMode ? ['--no-db'] : [];
+  }
+  if (config.useJsonlMode) {
+    return ['--no-db', ...args];
+  }
+  return args;
 }
 
 export async function listReadyIssues(workspaceRoot: string): Promise<BeadsResult<BeadsIssue[]>> {
@@ -132,8 +148,7 @@ export async function listReadyIssues(workspaceRoot: string): Promise<BeadsResul
   let stdout: string;
   let stderr: string;
   try {
-    // Use --no-db in JSONL mode to prevent auto-discovery of parent databases
-    const cmdArgs = config.useJsonlMode ? ['--no-db', 'ready', '--json'] : ['ready', '--json'];
+    const cmdArgs = buildBdArgs(['ready', '--json']);
     const result = await execFileAsync(bdCmd, cmdArgs, {
       cwd: workspaceRoot,
       timeout: 30000, // 30 second timeout to prevent hanging
@@ -194,8 +209,7 @@ export async function exportIssuesWithDeps(
   let stdout: string;
   let stderr: string;
   try {
-    // Use --no-db in JSONL mode to prevent auto-discovery of parent databases
-    const cmdArgs = config.useJsonlMode ? ['--no-db', 'export'] : ['export'];
+    const cmdArgs = buildBdArgs(['export']);
     const result = await execFileAsync(bdCmd, cmdArgs, {
       cwd: workspaceRoot,
       timeout: 30000, // 30 second timeout to prevent hanging
