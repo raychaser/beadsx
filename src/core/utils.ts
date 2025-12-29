@@ -5,7 +5,9 @@ import type { BeadsIssue, SortableIssue } from './types';
 
 /**
  * Compute depth of each issue in a hierarchy.
- * Handles circular references by treating cycles as roots (depth 0).
+ * Handles circular references by breaking cycles when detected during traversal.
+ * When a cycle is detected, the cyclic node returns depth 0, so the node that
+ * triggered the detection gets depth 1 (e.g., self-reference A->A gets depth 1).
  * Returns a Map from issue ID to depth.
  */
 export function computeIssueDepths(issues: BeadsIssue[]): Map<string, number> {

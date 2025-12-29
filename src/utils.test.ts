@@ -88,30 +88,34 @@ describe('computeIssueDepths', () => {
     it('handles simple cycle (A -> B -> A) without infinite loop', () => {
       const issues = [createTestIssue('A', 'B'), createTestIssue('B', 'A')];
       const result = computeIssueDepths(issues);
-      // Should terminate - both treated as roots or shallow depth
+      // Should terminate with valid depths
       expect(result.size).toBe(2);
-      // One will be computed first and have depth 0, the other might have depth 1
-      // but neither should cause infinite loop
-      expect(result.has('A')).toBe(true);
-      expect(result.has('B')).toBe(true);
+      // A processed first: recurses A->B->A, cycle detected sets A=0 temporarily,
+      // then B=0+1=1, then A=1+1=2 (overwrites). B retrieved from cache.
+      expect(result.get('A')).toBe(2);
+      expect(result.get('B')).toBe(1);
     });
 
     it('handles longer cycle (A -> B -> C -> A) without infinite loop', () => {
+      // Note: parentId means "parent is", so A->C means A's parent is C
+      // Chain: A's parent is C, B's parent is A, C's parent is B (forms cycle)
       const issues = [
         createTestIssue('A', 'C'),
         createTestIssue('B', 'A'),
         createTestIssue('C', 'B'),
       ];
       const result = computeIssueDepths(issues);
-      // Should terminate - all issues should have a depth assigned
+      // Should terminate with valid depths
       expect(result.size).toBe(3);
-      expect(result.has('A')).toBe(true);
-      expect(result.has('B')).toBe(true);
-      expect(result.has('C')).toBe(true);
+      // A processed first: A->C->B->A, cycle at A sets A=0, then B=1, C=2, A=3
+      expect(result.get('A')).toBe(3);
+      expect(result.get('B')).toBe(1);
+      expect(result.get('C')).toBe(2);
     });
 
     it('handles cycle with a valid root attached', () => {
-      // root -> child -> cycleA -> cycleB -> cycleA
+      // Normal hierarchy: root <- child (child's parent is root)
+      // Separate cycle: cycleA <- cycleB <- cycleA (mutual parents)
       const issues = [
         createTestIssue('root'),
         createTestIssue('child', 'root'),
@@ -119,11 +123,12 @@ describe('computeIssueDepths', () => {
         createTestIssue('cycleB', 'cycleA'),
       ];
       const result = computeIssueDepths(issues);
+      // Normal hierarchy gets correct depths
       expect(result.get('root')).toBe(0);
       expect(result.get('child')).toBe(1);
-      // Cycle issues should still be handled without infinite loop
-      expect(result.has('cycleA')).toBe(true);
-      expect(result.has('cycleB')).toBe(true);
+      // Cycle is processed after normal nodes, cycleA->cycleB->cycleA
+      expect(result.get('cycleA')).toBe(2);
+      expect(result.get('cycleB')).toBe(1);
     });
   });
 

@@ -21,7 +21,9 @@ vi.mock('vscode', () => ({
 import { access } from 'node:fs/promises';
 import {
   type BeadsIssue,
+  buildBdArgs,
   clearBeadsInitializedCache,
+  configure,
   getAllAncestors,
   getChildren,
   isBeadsInitialized,
@@ -365,5 +367,56 @@ describe('getBdCommand validation', () => {
     for (const path of safePaths) {
       expect(/[;&|<>`$]/.test(path)).toBe(false);
     }
+  });
+});
+
+describe('buildBdArgs', () => {
+  beforeEach(() => {
+    // Reset config to default (no useJsonlMode)
+    configure({});
+  });
+
+  it('returns args unchanged when useJsonlMode is false', () => {
+    configure({ useJsonlMode: false });
+    const result = buildBdArgs(['ready', '--json']);
+    expect(result).toEqual(['ready', '--json']);
+  });
+
+  it('returns args unchanged when useJsonlMode is undefined', () => {
+    configure({});
+    const result = buildBdArgs(['export']);
+    expect(result).toEqual(['export']);
+  });
+
+  it('prepends --no-db when useJsonlMode is true', () => {
+    configure({ useJsonlMode: true });
+    const result = buildBdArgs(['ready', '--json']);
+    expect(result).toEqual(['--no-db', 'ready', '--json']);
+  });
+
+  it('prepends --no-db for export command when useJsonlMode is true', () => {
+    configure({ useJsonlMode: true });
+    const result = buildBdArgs(['export']);
+    expect(result).toEqual(['--no-db', 'export']);
+  });
+
+  it('handles empty args array', () => {
+    configure({ useJsonlMode: true });
+    const result = buildBdArgs([]);
+    expect(result).toEqual(['--no-db']);
+  });
+
+  it('handles empty args array when useJsonlMode is false', () => {
+    configure({ useJsonlMode: false });
+    const result = buildBdArgs([]);
+    expect(result).toEqual([]);
+  });
+
+  it('does not mutate the original args array', () => {
+    configure({ useJsonlMode: true });
+    const original = ['ready', '--json'];
+    const originalCopy = [...original];
+    buildBdArgs(original);
+    expect(original).toEqual(originalCopy);
   });
 });

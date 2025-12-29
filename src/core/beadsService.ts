@@ -119,6 +119,17 @@ function getBdCommand(): string {
   return 'bd';
 }
 
+/**
+ * Build command arguments for bd, prepending --no-db when useJsonlMode is enabled.
+ * This ensures consistent handling of JSONL mode across all bd command invocations.
+ */
+export function buildBdArgs(args: string[]): string[] {
+  if (config.useJsonlMode) {
+    return ['--no-db', ...args];
+  }
+  return args;
+}
+
 export async function listReadyIssues(workspaceRoot: string): Promise<BeadsResult<BeadsIssue[]>> {
   // Skip if beads is not initialized in this workspace
   if (!(await isBeadsInitialized(workspaceRoot))) {
@@ -132,8 +143,7 @@ export async function listReadyIssues(workspaceRoot: string): Promise<BeadsResul
   let stdout: string;
   let stderr: string;
   try {
-    // Use --no-db in JSONL mode to prevent auto-discovery of parent databases
-    const cmdArgs = config.useJsonlMode ? ['--no-db', 'ready', '--json'] : ['ready', '--json'];
+    const cmdArgs = buildBdArgs(['ready', '--json']);
     const result = await execFileAsync(bdCmd, cmdArgs, {
       cwd: workspaceRoot,
       timeout: 30000, // 30 second timeout to prevent hanging
@@ -194,8 +204,7 @@ export async function exportIssuesWithDeps(
   let stdout: string;
   let stderr: string;
   try {
-    // Use --no-db in JSONL mode to prevent auto-discovery of parent databases
-    const cmdArgs = config.useJsonlMode ? ['--no-db', 'export'] : ['export'];
+    const cmdArgs = buildBdArgs(['export']);
     const result = await execFileAsync(bdCmd, cmdArgs, {
       cwd: workspaceRoot,
       timeout: 30000, // 30 second timeout to prevent hanging

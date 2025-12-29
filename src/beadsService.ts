@@ -6,6 +6,7 @@ import {
   type BeadsConfig,
   type BeadsDependency,
   type BeadsIssue,
+  buildBdArgs,
   clearBeadsInitializedCache,
   configure,
   type FilterMode,
@@ -19,7 +20,14 @@ import { DEFAULT_RECENT_WINDOW_MINUTES } from './core/utils';
 
 // Re-export types and functions for backwards compatibility
 export type { BeadsDependency, BeadsIssue, FilterMode };
-export { clearBeadsInitializedCache, getAllAncestors, getChildren, isBeadsInitialized };
+export {
+  buildBdArgs,
+  clearBeadsInitializedCache,
+  configure,
+  getAllAncestors,
+  getChildren,
+  isBeadsInitialized,
+};
 
 // Module-level output channel reference for logging
 let outputChannel: vscode.OutputChannel | undefined;
