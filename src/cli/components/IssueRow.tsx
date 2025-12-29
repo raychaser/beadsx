@@ -2,7 +2,7 @@
 
 import { useTerminalDimensions } from '@opentui/react';
 import type { BeadsIssue } from '../../core';
-import { formatTimeAgo } from '../../core';
+import { formatTimeAgo, truncateTitle } from '../../core';
 
 interface IssueRowProps {
   issue: BeadsIssue;
@@ -61,10 +61,13 @@ export function IssueRow({
 
   // Calculate available width for title
   // Format: [prefix][status][space][priority][space][type][space][id][space][title][optional: space + (timeAgo)]
+  // Note: Width calculation uses character count which may be imprecise for Unicode
+  // characters that render wider than 1 cell (e.g., some emoji, CJK characters).
+  // This is a best-effort approximation that works well for most ASCII titles.
   const prefixLen = prefix.length;
-  const statusLen = 1; // status icon
+  const statusLen = 1; // status icon (Unicode symbols render as ~1 cell)
   const priorityLen = priorityStr.length;
-  const typeLen = 2; // emoji typically renders as 2 chars width
+  const typeLen = 2; // emoji typically renders as 2 cells in most terminals
   const idLen = (shortId || '').length;
   const spacesLen = 4; // 4 spaces between elements
   const timeAgoLen = timeAgo ? timeAgo.length + 3 : 0; // " (timeAgo)"
@@ -142,10 +145,4 @@ function getStatusColor(status: string): string {
     default:
       return 'white';
   }
-}
-
-function truncateTitle(title: string, maxWidth: number): string {
-  if (title.length <= maxWidth) return title;
-  if (maxWidth <= 1) return '\u2026'; // Unicode ellipsis
-  return title.slice(0, maxWidth - 1) + '\u2026';
 }

@@ -135,3 +135,15 @@ export function validateRecentWindowMinutes(value: unknown): {
   }
   return { value, warning: null };
 }
+
+/**
+ * Truncates a title to fit within the specified width, adding an ellipsis if needed.
+ * Note: Uses string length (UTF-16 code units), not visual display width. Titles with
+ * emoji or wide Unicode characters may not truncate perfectly to the visual width.
+ */
+export function truncateTitle(title: string, maxWidth: number): string {
+  if (maxWidth <= 0) return '';
+  if (title.length <= maxWidth) return title;
+  if (maxWidth === 1) return '\u2026'; // Only room for ellipsis
+  return `${title.slice(0, maxWidth - 1)}\u2026`;
+}
