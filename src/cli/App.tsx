@@ -10,6 +10,7 @@ import {
   listFilteredIssues,
   sortIssues,
 } from '../core';
+import { DetailView, getSelectableChildrenCount, getSelectedChild } from './components/DetailView';
 import { FilterBar } from './components/FilterBar';
 import { IssueTree } from './components/IssueTree';
 import { StatusBar } from './components/StatusBar';
@@ -29,6 +30,11 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Detail view state
+  const [viewMode, setViewMode] = useState<'tree' | 'detail'>('tree');
+  const [detailStack, setDetailStack] = useState<string[]>([]); // Stack of issue IDs for navigation history
+  const [selectedChildIndex, setSelectedChildIndex] = useState(0);
 
   // Load issues
   const loadIssues = useCallback(async () => {
@@ -119,15 +125,82 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
   const visibleIssues = getVisibleIssues();
   const selectedIssue = visibleIssues[selectedIndex];
 
+  // Get current detail issue from stack
+  const currentDetailIssue =
+    viewMode === 'detail' && detailStack.length > 0
+      ? issues.find((i) => i.id === detailStack[detailStack.length - 1])
+      : null;
+
   // Keyboard input handling
   useKeyboard((event: KeyEvent) => {
     const key = event.name;
 
+    // Quit - works in both modes
+    if (key === 'q') {
+      if (onQuit) {
+        onQuit();
+      } else {
+        process.exit(0);
+      }
+      return;
+    }
+
+    // Detail view mode keyboard handling
+    if (viewMode === 'detail') {
+      if (key === 'escape') {
+        // ESC: Go back in navigation history
+        setDetailStack((stack) => {
+          const newStack = stack.slice(0, -1);
+          if (newStack.length === 0) {
+            setViewMode('tree');
+          }
+          setSelectedChildIndex(0);
+          return newStack;
+        });
+      } else if (key === 'up' || key === 'k') {
+        // Navigate children
+        if (currentDetailIssue) {
+          const childCount = getSelectableChildrenCount(currentDetailIssue, issues);
+          if (childCount > 0) {
+            setSelectedChildIndex((i) => Math.max(0, i - 1));
+          }
+        }
+      } else if (key === 'down' || key === 'j') {
+        // Navigate children
+        if (currentDetailIssue) {
+          const childCount = getSelectableChildrenCount(currentDetailIssue, issues);
+          if (childCount > 0) {
+            setSelectedChildIndex((i) => Math.min(childCount - 1, i + 1));
+          }
+        }
+      } else if (key === 'return') {
+        // Enter: Drill into selected child
+        if (currentDetailIssue) {
+          const selectedChild = getSelectedChild(currentDetailIssue, issues, selectedChildIndex);
+          if (selectedChild) {
+            setDetailStack((stack) => [...stack, selectedChild.id]);
+            setSelectedChildIndex(0);
+          }
+        }
+      }
+      return;
+    }
+
+    // Tree view mode keyboard handling
     // Navigation
     if (key === 'up' || key === 'k') {
       setSelectedIndex((i) => Math.max(0, i - 1));
     } else if (key === 'down' || key === 'j') {
       setSelectedIndex((i) => Math.min(visibleIssues.length - 1, i + 1));
+    }
+
+    // Enter: Open detail view
+    else if (key === 'return') {
+      if (selectedIssue) {
+        setDetailStack([selectedIssue.id]);
+        setViewMode('detail');
+        setSelectedChildIndex(0);
+      }
     }
 
     // Expand/collapse
@@ -171,15 +244,6 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
         setError(`Manual refresh failed: ${errorMessage}`);
       });
     }
-
-    // Quit - use callback for proper cleanup, fallback to process.exit
-    else if (key === 'q') {
-      if (onQuit) {
-        onQuit();
-      } else {
-        process.exit(0);
-      }
-    }
   });
 
   // Keep selection in bounds
@@ -191,12 +255,18 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
 
   return (
     <box flexDirection="column">
-      <FilterBar filter={filter} lastRefresh={lastRefresh} />
+      {viewMode === 'tree' && <FilterBar filter={filter} lastRefresh={lastRefresh} />}
       <box flexDirection="column" flexGrow={1}>
         {error ? (
           <text fg="red">{error}</text>
         ) : loading ? (
           <text>Loading...</text>
+        ) : viewMode === 'detail' && currentDetailIssue ? (
+          <DetailView
+            issue={currentDetailIssue}
+            allIssues={issues}
+            selectedChildIndex={selectedChildIndex}
+          />
         ) : visibleIssues.length === 0 ? (
           <text fg="gray">No issues found</text>
         ) : (
@@ -208,7 +278,7 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
           />
         )}
       </box>
-      <StatusBar issues={issues} />
+      {viewMode === 'tree' && <StatusBar issues={issues} />}
     </box>
   );
 }

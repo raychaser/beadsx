@@ -3,6 +3,7 @@
 import { useTerminalDimensions } from '@opentui/react';
 import type { BeadsIssue } from '../../core';
 import { formatTimeAgo, truncateTitle } from '../../core';
+import { getShortId, getStatusColor, getStatusIcon, getTypeIcon } from '../constants';
 
 interface IssueRowProps {
   issue: BeadsIssue;
@@ -12,23 +13,6 @@ interface IssueRowProps {
   isSelected: boolean;
   isLastChild: boolean;
 }
-
-// Status indicators
-const STATUS_ICONS: Record<string, string> = {
-  closed: '✓',
-  in_progress: '●',
-  blocked: '✖',
-  open: '○',
-};
-
-// Issue type icons (similar to VS Code extension)
-const TYPE_ICONS: Record<string, string> = {
-  bug: '🐛',
-  feature: '💡',
-  epic: '🚀',
-  chore: '🔧',
-  task: '📋',
-};
 
 export function IssueRow({
   issue,
@@ -44,11 +28,11 @@ export function IssueRow({
   const prefix = buildTreePrefix(depth, hasChildren, isExpanded, isLastChild);
 
   // Status icon and color
-  const statusIcon = STATUS_ICONS[issue.status] || '○';
+  const statusIcon = getStatusIcon(issue.status);
   const statusColor = getStatusColor(issue.status);
 
   // Type icon
-  const typeIcon = TYPE_ICONS[issue.issue_type] || '📋';
+  const typeIcon = getTypeIcon(issue.issue_type);
 
   // Priority display
   const priorityStr = `P${issue.priority}`;
@@ -57,7 +41,7 @@ export function IssueRow({
   const timeAgo = issue.status === 'closed' && issue.closed_at ? formatTimeAgo(issue.closed_at) : '';
 
   // Shorten ID (take last part after hyphen)
-  const shortId = issue.id.includes('-') ? issue.id.split('-').pop() : issue.id;
+  const shortId = getShortId(issue.id);
 
   // Calculate available width for title
   // Format: [prefix][status][space][priority][space][type][space][id][space][title][optional: space + (timeAgo)]
@@ -134,15 +118,3 @@ function buildTreePrefix(
   return prefix;
 }
 
-function getStatusColor(status: string): string {
-  switch (status) {
-    case 'closed':
-      return 'green';
-    case 'in_progress':
-      return 'yellow';
-    case 'blocked':
-      return 'red';
-    default:
-      return 'white';
-  }
-}
