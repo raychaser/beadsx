@@ -36,6 +36,7 @@ export interface BeadsConfig {
   shortIds?: boolean;
   autoExpandOpen?: boolean;
   recentWindowMinutes?: number;
+  useJsonlMode?: boolean; // When true, adds --no-db to all bd commands
 }
 
 export interface Logger {

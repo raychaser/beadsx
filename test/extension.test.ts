@@ -216,6 +216,16 @@ test.beforeAll(async () => {
   fs.mkdirSync(extensionsDir, { recursive: true });
   console.log('Created temp dirs:', { workspacePath, userDataDir, extensionsDir });
 
+  // Create .vscode/settings.json to enable JSONL-only mode in the extension
+  // This ensures the extension also uses --no-db, matching the test setup
+  const vscodeDir = path.join(workspacePath, '.vscode');
+  fs.mkdirSync(vscodeDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(vscodeDir, 'settings.json'),
+    JSON.stringify({ 'beadsx.useJsonlMode': true }, null, 2),
+  );
+  console.log('Created .vscode/settings.json with useJsonlMode: true');
+
   // Initialize beads in JSONL-only mode (--no-db) for complete workspace isolation
   // This prevents bd from auto-discovering databases in parent directories
   try {

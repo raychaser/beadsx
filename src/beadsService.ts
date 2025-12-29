@@ -39,6 +39,7 @@ function updateCoreConfig(): void {
     shortIds: vsConfig.get<boolean>('shortIds', false),
     autoExpandOpen: vsConfig.get<boolean>('autoExpandOpen', true),
     recentWindowMinutes: vsConfig.get<number>('recentWindowMinutes', DEFAULT_RECENT_WINDOW_MINUTES),
+    useJsonlMode: vsConfig.get<boolean>('useJsonlMode', false),
   };
 
   const logger = {
