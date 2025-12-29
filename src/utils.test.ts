@@ -7,6 +7,7 @@ import {
   MAX_RECENT_WINDOW_MINUTES,
   MIN_RECENT_WINDOW_MINUTES,
   sortIssues,
+  truncateTitle,
   validateRecentWindowMinutes,
 } from './utils';
 
@@ -427,5 +428,60 @@ describe('validateRecentWindowMinutes', () => {
       value: MIN_RECENT_WINDOW_MINUTES,
       warning: `recentWindowMinutes (-Infinity) below minimum, clamping to ${MIN_RECENT_WINDOW_MINUTES}`,
     });
+  });
+});
+
+describe('truncateTitle', () => {
+  it('returns empty string for maxWidth <= 0', () => {
+    expect(truncateTitle('Hello', 0)).toBe('');
+    expect(truncateTitle('Hello', -1)).toBe('');
+    expect(truncateTitle('Hello', -100)).toBe('');
+  });
+
+  it('returns title unchanged when it fits within maxWidth', () => {
+    expect(truncateTitle('Hello', 5)).toBe('Hello');
+    expect(truncateTitle('Hello', 10)).toBe('Hello');
+    expect(truncateTitle('Hi', 100)).toBe('Hi');
+  });
+
+  it('returns title unchanged when exactly at maxWidth', () => {
+    expect(truncateTitle('Hello', 5)).toBe('Hello');
+    expect(truncateTitle('AB', 2)).toBe('AB');
+  });
+
+  it('returns only ellipsis when maxWidth is 1', () => {
+    expect(truncateTitle('Hello World', 1)).toBe('\u2026');
+    expect(truncateTitle('A', 1)).toBe('A'); // fits exactly
+  });
+
+  it('truncates with ellipsis when title exceeds maxWidth', () => {
+    expect(truncateTitle('Hello World', 8)).toBe('Hello W\u2026');
+    expect(truncateTitle('Hello World', 6)).toBe('Hello\u2026');
+    expect(truncateTitle('Hello World', 2)).toBe('H\u2026');
+  });
+
+  it('handles empty string input', () => {
+    expect(truncateTitle('', 10)).toBe('');
+    expect(truncateTitle('', 0)).toBe('');
+    expect(truncateTitle('', 1)).toBe('');
+  });
+
+  it('handles single character titles', () => {
+    expect(truncateTitle('A', 1)).toBe('A');
+    expect(truncateTitle('A', 2)).toBe('A');
+    expect(truncateTitle('A', 0)).toBe('');
+  });
+
+  it('handles titles with Unicode characters', () => {
+    // Note: truncateTitle uses string length (UTF-16 code units), not visual width
+    // Emoji like 🚀 are 2 code units, so 'Hello 🚀 World' has length 14
+    // These tests verify the current behavior, not necessarily "correct" visual truncation
+    expect(truncateTitle('Hello 🚀 World', 10)).toBe('Hello 🚀 \u2026'); // 9 chars + ellipsis
+    expect(truncateTitle('日本語', 2)).toBe('日\u2026');
+  });
+
+  it('preserves spaces in truncated output', () => {
+    expect(truncateTitle('A B C D E', 5)).toBe('A B \u2026');
+    expect(truncateTitle('Word Word', 6)).toBe('Word \u2026');
   });
 });
