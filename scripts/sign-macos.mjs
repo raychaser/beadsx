@@ -119,6 +119,9 @@ async function createZip(binaryPath) {
     unlinkSync(zipPath);
   }
 
+  // Ensure binary is executable (may be lost during cross-platform transfer)
+  await run(`chmod +x "${binaryPath}"`);
+
   console.log(`Creating ZIP: ${basename(zipPath)}`);
   await run(`cd "${dir}" && zip -j "${basename(zipPath)}" "${binaryName}"`);
 
