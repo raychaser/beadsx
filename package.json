@@ -126,20 +126,23 @@
     "prepare": "husky",
     "cli:dev": "bun run src/cli/index.tsx",
     "cli:build": "bun build --compile src/cli/index.tsx --outfile dist/bdx",
-    "cli:build:all": "mkdir -p dist && bun build --compile src/cli/index.tsx --outfile dist/bdx-darwin-arm64 --target bun-darwin-arm64 && bun build --compile src/cli/index.tsx --outfile dist/bdx-darwin-x64 --target bun-darwin-x64 && bun build --compile src/cli/index.tsx --outfile dist/bdx-linux-x64 --target bun-linux-x64 && bun build --compile src/cli/index.tsx --outfile dist/bdx-linux-arm64 --target bun-linux-arm64 && bun build --compile src/cli/index.tsx --outfile dist/bdx-windows-x64.exe --target bun-windows-x64"
+    "cli:build:all": "mkdir -p dist && bun build --compile src/cli/index.tsx --outfile dist/bdx-darwin-arm64 --target bun-darwin-arm64 && bun build --compile src/cli/index.tsx --outfile dist/bdx-darwin-x64 --target bun-darwin-x64 && bun build --compile src/cli/index.tsx --outfile dist/bdx-linux-x64 --target bun-linux-x64 && bun build --compile src/cli/index.tsx --outfile dist/bdx-linux-arm64 --target bun-linux-arm64 && bun build --compile src/cli/index.tsx --outfile dist/bdx-windows-x64.exe --target bun-windows-x64",
+    "sign:macos": "node scripts/sign-macos.mjs",
+    "sign:macos:local": "node scripts/sign-macos.mjs --skip-notarize"
   },
   "bin": {
     "bdx": "./bin/bdx.js"
   },
   "devDependencies": {
-    "react": "^19.0.0",
     "@biomejs/biome": "^2.3.8",
     "@opentui/core": "^0.1.63",
+    "@opentui/core-darwin-arm64": "^0.1.66",
+    "@opentui/core-darwin-x64": "^0.1.66",
     "@opentui/react": "^0.1.63",
-    "@types/react": "^19.0.0",
     "@playwright/test": "^1.57.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^20.10.0",
+    "@types/react": "^19.0.0",
     "@types/vscode": "^1.85.0",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
@@ -148,6 +151,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
     "ovsx": "^0.10.7",
+    "react": "^19.0.0",
     "typescript": "^5.3.2",
     "vitest": "^4.0.15"
   },

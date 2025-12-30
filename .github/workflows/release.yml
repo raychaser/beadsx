@@ -5,11 +5,15 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: write
+
 jobs:
-  release:
+  # Build all binaries on Ubuntu (fast and cost-effective)
+  build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.VERSION }}
     steps:
       - uses: actions/checkout@v4
 
@@ -66,12 +70,193 @@ jobs:
       - name: Package extension
         run: pnpm run package
 
+      - name: Upload CLI binaries artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-binaries
+          path: dist/bdx-*
+          retention-days: 1
+
+      - name: Upload extension artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix-extension
+          path: beadsx-*.vsix
+          retention-days: 1
+
+  # Sign and notarize macOS binaries (requires macOS runner)
+  sign-macos:
+    needs: build
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download CLI binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: cli-binaries
+          path: dist
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Import certificate into temporary keychain
+      - name: Import certificate
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          # Validate required secrets
+          if [ -z "$APPLE_CERTIFICATE_BASE64" ]; then
+            echo "Error: APPLE_CERTIFICATE_BASE64 secret is not set"
+            exit 1
+          fi
+          if [ -z "$APPLE_CERTIFICATE_PASSWORD" ]; then
+            echo "Error: APPLE_CERTIFICATE_PASSWORD secret is not set"
+            exit 1
+          fi
+
+          # Create variables
+          CERTIFICATE_PATH=$RUNNER_TEMP/certificate.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+
+          # Decode certificate
+          echo "$APPLE_CERTIFICATE_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
+
+          # Create temporary keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"  # Lock timeout: 6 hours
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Import certificate
+          security import "$CERTIFICATE_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+
+          # Allow codesign to access keychain without prompts
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Add to search list (prepend to existing)
+          security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychain -d user | tr -d '"')
+
+          # Store keychain path for later steps
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
+
+          # Verify certificate was imported
+          echo "Verifying certificate import..."
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      # Setup API key for notarization
+      - name: Setup API key
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        run: |
+          # Validate required secrets
+          if [ -z "$APPLE_API_KEY_BASE64" ]; then
+            echo "Error: APPLE_API_KEY_BASE64 secret is not set"
+            exit 1
+          fi
+          if [ -z "$APPLE_API_KEY_ID" ]; then
+            echo "Error: APPLE_API_KEY_ID secret is not set"
+            exit 1
+          fi
+
+          mkdir -p ~/.private_keys
+          API_KEY_PATH=~/.private_keys/AuthKey_${APPLE_API_KEY_ID}.p8
+          echo "$APPLE_API_KEY_BASE64" | base64 --decode > "$API_KEY_PATH"
+          chmod 600 "$API_KEY_PATH"
+          echo "APPLE_API_KEY=$API_KEY_PATH" >> $GITHUB_ENV
+
+      # Sign and notarize macOS binaries
+      # Note: APPLE_API_KEY is set by "Setup API key" step via GITHUB_ENV
+      - name: Sign and notarize macOS binaries
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          node scripts/sign-macos.mjs
+
+      # Cleanup keychain (always runs, even on failure)
+      - name: Cleanup keychain
+        if: always()
+        run: |
+          if [ -n "$KEYCHAIN_PATH" ] && [ -f "$KEYCHAIN_PATH" ]; then
+            security delete-keychain "$KEYCHAIN_PATH" || echo "::warning::Failed to delete keychain at $KEYCHAIN_PATH"
+          fi
+          rm -f ~/.private_keys/AuthKey_*.p8 || echo "::warning::Failed to clean up API key files"
+          rm -f "$RUNNER_TEMP/certificate.p12" || echo "::warning::Failed to clean up certificate file"
+
+      - name: Upload signed macOS binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-macos-binaries
+          path: dist/bdx-darwin-*.zip
+          retention-days: 1
+
+  # Create release with all artifacts
+  release:
+    needs: [build, sign-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download CLI binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: cli-binaries
+          path: dist
+
+      - name: Download signed macOS binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: signed-macos-binaries
+          path: dist
+
+      - name: Download extension
+        uses: actions/download-artifact@v4
+        with:
+          name: vsix-extension
+          path: .
+
+      - name: Prepare release files
+        run: |
+          cd dist
+          # Verify signed ZIPs exist before removing unsigned binaries
+          for arch in arm64 x64; do
+            if [ ! -f "bdx-darwin-${arch}.zip" ]; then
+              echo "Error: Signed binary bdx-darwin-${arch}.zip not found"
+              exit 1
+            fi
+          done
+          # Remove unsigned macOS binaries (we have signed ZIPs instead)
+          rm -f bdx-darwin-arm64
+          rm -f bdx-darwin-x64
+          # List final files
+          echo "Release files:"
+          ls -la
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum bdx-* > SHA256SUMS.txt
+          echo "Checksums:"
+          cat SHA256SUMS.txt
+
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             beadsx-*.vsix
-            dist/bdx-*
+            dist/bdx-darwin-arm64.zip
+            dist/bdx-darwin-x64.zip
+            dist/bdx-linux-x64
+            dist/bdx-linux-arm64
+            dist/bdx-windows-x64.exe
+            dist/SHA256SUMS.txt
           generate_release_notes: true
           body: |
             ## VS Code Extension
@@ -85,7 +270,7 @@ jobs:
             Download the `.vsix` file and install it in VSCode:
 
             ```bash
-            code --install-extension beadsx-${{ steps.version.outputs.VERSION }}.vsix
+            code --install-extension beadsx-${{ needs.build.outputs.version }}.vsix
             ```
 
             ## bdx CLI Tool
@@ -94,8 +279,8 @@ jobs:
 
             | Platform | Binary |
             |----------|--------|
-            | macOS (Apple Silicon) | `bdx-darwin-arm64` |
-            | macOS (Intel) | `bdx-darwin-x64` |
+            | macOS (Apple Silicon) | `bdx-darwin-arm64.zip` (signed & notarized) |
+            | macOS (Intel) | `bdx-darwin-x64.zip` (signed & notarized) |
             | Linux (x64) | `bdx-linux-x64` |
             | Linux (ARM64) | `bdx-linux-arm64` |
             | Windows (x64) | `bdx-windows-x64.exe` |
@@ -103,13 +288,49 @@ jobs:
             **Installation:**
 
             ```bash
-            # macOS/Linux - download and make executable
-            chmod +x bdx-*
-            mv bdx-* /usr/local/bin/bdx
+            # macOS - download, unzip, and move to PATH
+            unzip bdx-darwin-arm64.zip  # or bdx-darwin-x64.zip for Intel
+            chmod +x bdx-darwin-arm64
+            mv bdx-darwin-arm64 /usr/local/bin/bdx
+
+            # Linux - download and make executable
+            chmod +x bdx-linux-x64
+            mv bdx-linux-x64 /usr/local/bin/bdx
 
             # Then run from any beads project:
             bdx
             ```
+
+            ## Verification
+
+            Verify downloads with SHA256 checksums in `SHA256SUMS.txt`.
+
+  # Publish to VS Code Marketplace
+  publish-vsce:
+    needs: [build, release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Download extension
+        uses: actions/download-artifact@v4
+        with:
+          name: vsix-extension
+          path: .
 
       - name: Publish to VS Code Marketplace
         env:
@@ -119,7 +340,34 @@ jobs:
             echo "::error::VSCE_PAT secret is not set"
             exit 1
           fi
-          pnpm exec vsce publish
+          pnpm exec vsce publish --packagePath beadsx-*.vsix
+
+  # Publish to Open VSX Registry
+  publish-ovsx:
+    needs: [build, release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Download extension
+        uses: actions/download-artifact@v4
+        with:
+          name: vsix-extension
+          path: .
 
       - name: Publish to Open VSX Registry
         env:

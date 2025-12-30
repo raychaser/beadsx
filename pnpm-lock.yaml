@@ -14,6 +14,12 @@ importers:
       '@opentui/core':
         specifier: ^0.1.63
         version: 0.1.63(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)
+      '@opentui/core-darwin-arm64':
+        specifier: ^0.1.66
+        version: 0.1.66
+      '@opentui/core-darwin-x64':
+        specifier: ^0.1.66
+        version: 0.1.66
       '@opentui/react':
         specifier: ^0.1.63
         version: 0.1.63(react@19.2.3)(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)
@@ -749,8 +755,18 @@ packages:
     cpu: [arm64]
     os: [darwin]
 
+  '@opentui/core-darwin-arm64@0.1.66':
+    resolution: {integrity: sha512-Sf+ywTM9brOKq+p9yXgOYZ6w2RH73y+0gpwi59b6fh+BDFFUVEq+HyAA8wSJBo9x3F4qUO/y5TKCwl1Z/rSWaw==}
+    cpu: [arm64]
+    os: [darwin]
+
   '@opentui/core-darwin-x64@0.1.63':
     resolution: {integrity: sha512-rfNxynHzJpxN9i+SAMnn1NToEc8rYj64BsOxY78JNsm4Gg1Js1uyMaawwh2WbdGknFy4cDXS9QwkUMdMcfnjiw==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@opentui/core-darwin-x64@0.1.66':
+    resolution: {integrity: sha512-3m7QzyWOzTN0jbH+pZIAVKBCfDHqaNHcav1RvVOGkNdqWarUSIRViFOUhe1Y98MCG2Aq4vLAA0TreqaMi30otg==}
     cpu: [x64]
     os: [darwin]
 
@@ -3470,8 +3486,12 @@ snapshots:
   '@opentui/core-darwin-arm64@0.1.63':
     optional: true
 
+  '@opentui/core-darwin-arm64@0.1.66': {}
+
   '@opentui/core-darwin-x64@0.1.63':
     optional: true
+
+  '@opentui/core-darwin-x64@0.1.66': {}
 
   '@opentui/core-linux-arm64@0.1.63':
     optional: true
