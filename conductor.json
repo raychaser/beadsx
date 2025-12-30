@@ -1,6 +1,6 @@
 {
     "scripts": {
-        "setup": "pnpm i",
+        "setup": "pnpm i; cp ~/git/raychaser/experimental/beadsx/.git/beads-worktrees/main/.env .",
         "run": "pnpm cli:dev"
     }
 }
