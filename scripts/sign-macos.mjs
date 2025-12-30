@@ -207,14 +207,18 @@ async function getSigningIdentity(teamId, customIdentity) {
       }
     }
   } catch (error) {
-    console.warn("  Warning: Could not query keychain for signing identities");
+    console.warn("  WARNING: Could not query keychain for signing identities");
     console.warn(`  Reason: ${error.message}`);
     console.warn(
       `  Falling back to constructed identity: Developer ID Application: ${teamId}`
     );
     console.warn(
-      "  If signing fails, check that your keychain is unlocked and accessible"
+      "  NOTE: If signing fails below, this keychain access failure is likely the root cause."
     );
+    console.warn(
+      "  Check that your keychain is unlocked: security unlock-keychain"
+    );
+    console.warn("  Or use --list-identities to see available certificates");
   }
 
   // Fallback to simple format (may not work if name is required)

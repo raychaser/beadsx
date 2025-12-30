@@ -129,7 +129,7 @@ jobs:
 
           # Create temporary keychain
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"  # Lock timeout: 6 hours
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
           # Import certificate
@@ -173,13 +173,13 @@ jobs:
           echo "APPLE_API_KEY=$API_KEY_PATH" >> $GITHUB_ENV
 
       # Sign and notarize macOS binaries
+      # Note: APPLE_API_KEY is set by "Setup API key" step via GITHUB_ENV
       - name: Sign and notarize macOS binaries
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
         run: |
-          # Use the signing script
           node scripts/sign-macos.mjs
 
       # Cleanup keychain (always runs, even on failure)
@@ -187,10 +187,10 @@ jobs:
         if: always()
         run: |
           if [ -n "$KEYCHAIN_PATH" ] && [ -f "$KEYCHAIN_PATH" ]; then
-            security delete-keychain "$KEYCHAIN_PATH" || true
+            security delete-keychain "$KEYCHAIN_PATH" || echo "::warning::Failed to delete keychain at $KEYCHAIN_PATH"
           fi
-          rm -f ~/.private_keys/AuthKey_*.p8 || true
-          rm -f "$RUNNER_TEMP/certificate.p12" || true
+          rm -f ~/.private_keys/AuthKey_*.p8 || echo "::warning::Failed to clean up API key files"
+          rm -f "$RUNNER_TEMP/certificate.p12" || echo "::warning::Failed to clean up certificate file"
 
       - name: Upload signed macOS binaries
         uses: actions/upload-artifact@v4
@@ -225,6 +225,13 @@ jobs:
       - name: Prepare release files
         run: |
           cd dist
+          # Verify signed ZIPs exist before removing unsigned binaries
+          for arch in arm64 x64; do
+            if [ ! -f "bdx-darwin-${arch}.zip" ]; then
+              echo "Error: Signed binary bdx-darwin-${arch}.zip not found"
+              exit 1
+            fi
+          done
           # Remove unsigned macOS binaries (we have signed ZIPs instead)
           rm -f bdx-darwin-arm64
           rm -f bdx-darwin-x64
