@@ -192,6 +192,31 @@ jobs:
           rm -f ~/.private_keys/AuthKey_*.p8 || echo "::warning::Failed to clean up API key files"
           rm -f "$RUNNER_TEMP/certificate.p12" || echo "::warning::Failed to clean up certificate file"
 
+      - name: Verify signed binaries
+        run: |
+          echo "Verifying signed binaries..."
+          for arch in arm64 x64; do
+            ZIP_FILE="dist/bdx-darwin-${arch}.zip"
+            BINARY_NAME="bdx-darwin-${arch}"
+
+            if [ ! -f "$ZIP_FILE" ]; then
+              echo "Error: $ZIP_FILE not found"
+              exit 1
+            fi
+
+            # Extract and verify signature
+            TEMP_DIR=$(mktemp -d)
+            unzip -q "$ZIP_FILE" -d "$TEMP_DIR"
+
+            echo "Verifying $BINARY_NAME signature..."
+            codesign --verify --verbose=2 "$TEMP_DIR/$BINARY_NAME"
+
+            # Clean up
+            rm -rf "$TEMP_DIR"
+            echo "✓ $BINARY_NAME signature verified"
+          done
+          echo "All signed binaries verified successfully"
+
       - name: Upload signed macOS binaries
         uses: actions/upload-artifact@v4
         with:

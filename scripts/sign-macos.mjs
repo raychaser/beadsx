@@ -44,11 +44,27 @@ const MACOS_BINARIES = ["bdx-darwin-arm64", "bdx-darwin-x64"];
 /** Notarization timeout in milliseconds (30 minutes) */
 const NOTARIZATION_TIMEOUT_MS = 30 * 60 * 1000;
 
+/** Maximum retries for transient notarization failures */
+const NOTARIZATION_MAX_RETRIES = 3;
+
+/** Delay between notarization retries in milliseconds (30 seconds) */
+const NOTARIZATION_RETRY_DELAY_MS = 30 * 1000;
+
+/**
+ * Sleep for a specified duration.
+ * @param {number} ms - Duration in milliseconds
+ * @returns {Promise<void>}
+ */
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * Execute a command and return stdout/stderr.
  * @param {string} cmd - Command to execute
  * @param {object} options - exec options
  * @returns {Promise<{stdout: string, stderr: string}>}
+ * @throws {Error} If the command exits with a non-zero status
  */
 async function run(cmd, options = {}) {
   console.log(`  $ ${cmd}`);
@@ -129,50 +145,101 @@ async function createZip(binaryPath) {
 }
 
 /**
+ * Check if an error is likely transient and worth retrying.
+ * @param {Error} error - The error to check
+ * @returns {boolean} True if the error appears transient
+ */
+function isTransientError(error) {
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("network") ||
+    message.includes("timeout") ||
+    message.includes("connection") ||
+    message.includes("temporarily unavailable") ||
+    message.includes("service unavailable") ||
+    message.includes("503") ||
+    message.includes("504")
+  );
+}
+
+/**
  * Submit a ZIP for notarization and wait for completion.
+ * Includes retry logic for transient failures (network issues, timeouts).
  * @param {string} zipPath - Path to ZIP file
  * @param {string} apiKeyPath - Path to .p8 API key
  * @param {string} apiKeyId - API Key ID
  * @param {string} issuerId - Issuer ID
+ * @throws {Error} If notarization fails after all retries
  */
 async function notarize(zipPath, apiKeyPath, apiKeyId, issuerId) {
   console.log(`Submitting for notarization: ${basename(zipPath)}`);
   console.log("  This may take 5-15 minutes...");
 
-  const { stdout } = await run(
-    `xcrun notarytool submit "${zipPath}" --key "${apiKeyPath}" --key-id "${apiKeyId}" --issuer "${issuerId}" --wait --timeout 30m`,
-    { timeout: NOTARIZATION_TIMEOUT_MS }
-  );
+  let lastError;
 
-  // Check for success
-  if (stdout.includes("status: Accepted")) {
-    console.log("  Notarization successful");
-  } else if (stdout.includes("status: Invalid")) {
-    // Get detailed log for debugging
-    const submissionIdMatch = stdout.match(/id: ([a-f0-9-]+)/);
-    if (submissionIdMatch) {
-      const logCmd = `xcrun notarytool log ${submissionIdMatch[1]} --key "${apiKeyPath}" --key-id "${apiKeyId}" --issuer "${issuerId}"`;
-      console.error("\n  Notarization failed. Fetching log...");
-      try {
-        const { stdout: logOutput } = await run(logCmd);
-        console.error(logOutput);
-      } catch (logError) {
-        console.error(
-          `  Warning: Could not fetch notarization log: ${logError.message}`
+  for (let attempt = 1; attempt <= NOTARIZATION_MAX_RETRIES; attempt++) {
+    if (attempt > 1) {
+      console.log(
+        `  Retry attempt ${attempt}/${NOTARIZATION_MAX_RETRIES} after ${NOTARIZATION_RETRY_DELAY_MS / 1000}s delay...`
+      );
+      await sleep(NOTARIZATION_RETRY_DELAY_MS);
+    }
+
+    try {
+      const { stdout } = await run(
+        `xcrun notarytool submit "${zipPath}" --key "${apiKeyPath}" --key-id "${apiKeyId}" --issuer "${issuerId}" --wait --timeout 30m`,
+        { timeout: NOTARIZATION_TIMEOUT_MS }
+      );
+
+      // Check for success
+      if (stdout.includes("status: Accepted")) {
+        console.log("  Notarization successful");
+        return;
+      } else if (stdout.includes("status: Invalid")) {
+        // Get detailed log for debugging
+        const submissionIdMatch = stdout.match(/id: ([a-f0-9-]+)/);
+        if (submissionIdMatch) {
+          const logCmd = `xcrun notarytool log ${submissionIdMatch[1]} --key "${apiKeyPath}" --key-id "${apiKeyId}" --issuer "${issuerId}"`;
+          console.error("\n  Notarization failed. Fetching log...");
+          try {
+            const { stdout: logOutput } = await run(logCmd);
+            console.error(logOutput);
+          } catch (logError) {
+            console.error(
+              `  Warning: Could not fetch notarization log: ${logError.message}`
+            );
+            console.error(`  You can manually fetch the log with:`);
+            console.error(`    ${logCmd}`);
+          }
+        }
+        // Invalid status is not transient - fail immediately
+        throw new Error("Notarization failed: status Invalid");
+      } else {
+        // Unknown status - treat as failure to be safe
+        console.error("  Notarization returned unexpected status");
+        console.error(`  Output: ${stdout}`);
+        console.error("  Expected 'status: Accepted' but did not find it");
+        throw new Error(
+          "Notarization failed: unexpected response (status not Accepted)"
         );
-        console.error(`  You can manually fetch the log with:`);
-        console.error(`    ${logCmd}`);
+      }
+    } catch (error) {
+      lastError = error;
+
+      // Don't retry for non-transient errors (like "status: Invalid")
+      if (!isTransientError(error)) {
+        throw error;
+      }
+
+      console.warn(`  Transient error on attempt ${attempt}: ${error.message}`);
+
+      if (attempt === NOTARIZATION_MAX_RETRIES) {
+        console.error(
+          `  All ${NOTARIZATION_MAX_RETRIES} notarization attempts failed`
+        );
+        throw lastError;
       }
     }
-    throw new Error("Notarization failed: status Invalid");
-  } else {
-    // Unknown status - treat as failure to be safe
-    console.error("  Notarization returned unexpected status");
-    console.error(`  Output: ${stdout}`);
-    console.error("  Expected 'status: Accepted' but did not find it");
-    throw new Error(
-      "Notarization failed: unexpected response (status not Accepted)"
-    );
   }
 }
 
@@ -319,6 +386,7 @@ async function main() {
   console.log(`Output: ${distDir}`);
 
   let signed = 0;
+  let missing = 0;
   let failed = 0;
 
   for (const binaryName of MACOS_BINARIES) {
@@ -330,7 +398,7 @@ async function main() {
     if (!existsSync(binaryPath)) {
       console.warn(`Warning: Binary not found: ${binaryPath}`);
       console.warn("  Run 'pnpm run cli:build:all' first");
-      failed++;
+      missing++;
       continue;
     }
 
@@ -363,6 +431,9 @@ async function main() {
   // Summary
   console.log(`\n=== Summary ===`);
   console.log(`Signed: ${signed}/${MACOS_BINARIES.length}`);
+  if (missing > 0) {
+    console.log(`Missing: ${missing}`);
+  }
   if (failed > 0) {
     console.log(`Failed: ${failed}`);
   }
@@ -376,7 +447,7 @@ async function main() {
     }
   }
 
-  if (failed > 0) {
+  if (missing > 0 || failed > 0) {
     process.exit(1);
   }
 
