@@ -164,26 +164,43 @@ async function executeCommand(p: Page, commandName: string): Promise<void> {
 
 /**
  * Execute BeadsX Filter command and wait for filter quick pick
+ * Includes retry logic for flaky command palette in VS Code Electron tests
  */
 async function executeFilterCommand(p: Page): Promise<void> {
   const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
-  await p.keyboard.press(`${modifier}+Shift+P`);
-  await p.locator('.quick-input-widget').waitFor({ state: 'visible', timeout: 5000 });
-  await p.keyboard.type('Filter Issues');
+  const maxRetries = 3;
 
-  // Wait for command to appear in list before pressing Enter
-  await p
-    .locator('.quick-input-list-row')
-    .filter({ hasText: 'Filter Issues' })
-    .waitFor({ state: 'visible', timeout: 5000 });
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // Open command palette
+      await p.keyboard.press(`${modifier}+Shift+P`);
+      await p.locator('.quick-input-widget').waitFor({ state: 'visible', timeout: 5000 });
+      await p.keyboard.type('Filter Issues');
 
-  await p.keyboard.press('Enter');
+      // Wait for command to appear in list before pressing Enter
+      await p
+        .locator('.quick-input-list-row')
+        .filter({ hasText: 'Filter Issues' })
+        .waitFor({ state: 'visible', timeout: 5000 });
 
-  // Wait for filter quick pick to appear (command palette closes, filter picker opens)
-  await p
-    .locator('.quick-input-list-row')
-    .filter({ hasText: 'All Issues' })
-    .waitFor({ state: 'visible', timeout: 10000 });
+      await p.keyboard.press('Enter');
+
+      // Wait for filter quick pick to appear (command palette closes, filter picker opens)
+      await p
+        .locator('.quick-input-list-row')
+        .filter({ hasText: 'All Issues' })
+        .waitFor({ state: 'visible', timeout: 10000 });
+
+      return; // Success
+    } catch (e) {
+      if (attempt === maxRetries) {
+        throw e; // Last attempt failed
+      }
+      // Close any open quick pick and retry
+      await p.keyboard.press('Escape');
+      await p.waitForTimeout(500);
+    }
+  }
 }
 
 /**
