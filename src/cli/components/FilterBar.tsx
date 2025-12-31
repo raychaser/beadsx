@@ -17,8 +17,12 @@ const FILTERS: { key: string; mode: FilterMode; label: string }[] = [
   { key: '4', mode: 'recent', label: 'Recent' },
 ];
 
+const DEFAULT_TERMINAL_WIDTH = 80;
+
 export function FilterBar({ filter, lastRefresh }: FilterBarProps) {
-  const { width: terminalWidth } = useTerminalDimensions();
+  const { width: rawWidth } = useTerminalDimensions();
+  // Use sensible fallback if terminal width is invalid (non-TTY, initialization)
+  const terminalWidth = typeof rawWidth === 'number' && rawWidth > 0 ? rawWidth : DEFAULT_TERMINAL_WIDTH;
 
   // Force re-render every second to update the time display
   const [tick, setTick] = useState(0);
