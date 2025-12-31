@@ -44,11 +44,27 @@ const MACOS_BINARIES = ["bdx-darwin-arm64", "bdx-darwin-x64"];
 /** Notarization timeout in milliseconds (30 minutes) */
 const NOTARIZATION_TIMEOUT_MS = 30 * 60 * 1000;
 
+/** Maximum retries for transient notarization failures */
+const NOTARIZATION_MAX_RETRIES = 3;
+
+/** Delay between notarization retries in milliseconds (30 seconds) */
+const NOTARIZATION_RETRY_DELAY_MS = 30 * 1000;
+
+/**
+ * Sleep for a specified duration.
+ * @param {number} ms - Duration in milliseconds
+ * @returns {Promise<void>}
+ */
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * Execute a command and return stdout/stderr.
  * @param {string} cmd - Command to execute
  * @param {object} options - exec options
  * @returns {Promise<{stdout: string, stderr: string}>}
+ * @throws {Error} If the command exits with a non-zero status
  */
 async function run(cmd, options = {}) {
   console.log(`  $ ${cmd}`);
@@ -129,51 +145,155 @@ async function createZip(binaryPath) {
 }
 
 /**
+ * Check if an error is likely transient and worth retrying.
+ * @param {Error} error - The error to check
+ * @returns {boolean} True if the error appears transient
+ */
+function isTransientError(error) {
+  const message = error.message.toLowerCase();
+
+  // Permanent errors - fail immediately, no retry
+  const permanentPatterns = [
+    "invalid credentials",
+    "authentication failed",
+    "certificate expired",
+    "certificate revoked",
+    "not authorized",
+    "forbidden",
+    "status: invalid", // Notarization rejected the binary
+    "401",
+    "403",
+  ];
+
+  for (const pattern of permanentPatterns) {
+    if (message.includes(pattern)) {
+      return false;
+    }
+  }
+
+  // Transient errors - worth retrying
+  const transientPatterns = [
+    "network",
+    "timeout",
+    "etimedout",
+    "econnreset",
+    "econnrefused",
+    "connection",
+    "temporarily unavailable",
+    "service unavailable",
+    "unable to process",
+    "rate limit",
+    "try again",
+    "busy",
+    "429",
+    "500",
+    "502",
+    "503",
+    "504",
+  ];
+
+  for (const pattern of transientPatterns) {
+    if (message.includes(pattern)) {
+      return true;
+    }
+  }
+
+  // Unknown error type - fail fast rather than waste time on retries
+  return false;
+}
+
+/**
  * Submit a ZIP for notarization and wait for completion.
+ * Includes retry logic with exponential backoff for transient failures.
  * @param {string} zipPath - Path to ZIP file
  * @param {string} apiKeyPath - Path to .p8 API key
  * @param {string} apiKeyId - API Key ID
  * @param {string} issuerId - Issuer ID
+ * @throws {Error} If notarization fails after all retries
  */
 async function notarize(zipPath, apiKeyPath, apiKeyId, issuerId) {
   console.log(`Submitting for notarization: ${basename(zipPath)}`);
-  console.log("  This may take 5-15 minutes...");
+  console.log("  This may take 5-15 minutes (timeout: 30 minutes)...");
 
-  const { stdout } = await run(
-    `xcrun notarytool submit "${zipPath}" --key "${apiKeyPath}" --key-id "${apiKeyId}" --issuer "${issuerId}" --wait --timeout 30m`,
-    { timeout: NOTARIZATION_TIMEOUT_MS }
-  );
+  let lastError;
 
-  // Check for success
-  if (stdout.includes("status: Accepted")) {
-    console.log("  Notarization successful");
-  } else if (stdout.includes("status: Invalid")) {
-    // Get detailed log for debugging
-    const submissionIdMatch = stdout.match(/id: ([a-f0-9-]+)/);
-    if (submissionIdMatch) {
-      const logCmd = `xcrun notarytool log ${submissionIdMatch[1]} --key "${apiKeyPath}" --key-id "${apiKeyId}" --issuer "${issuerId}"`;
-      console.error("\n  Notarization failed. Fetching log...");
-      try {
-        const { stdout: logOutput } = await run(logCmd);
-        console.error(logOutput);
-      } catch (logError) {
-        console.error(
-          `  Warning: Could not fetch notarization log: ${logError.message}`
+  for (let attempt = 1; attempt <= NOTARIZATION_MAX_RETRIES; attempt++) {
+    if (attempt > 1) {
+      // Exponential backoff: 30s, 60s, 120s (capped at 5 minutes)
+      const delay = Math.min(
+        NOTARIZATION_RETRY_DELAY_MS * Math.pow(2, attempt - 2),
+        5 * 60 * 1000
+      );
+      console.log(
+        `  Retry attempt ${attempt}/${NOTARIZATION_MAX_RETRIES} after ${delay / 1000}s delay...`
+      );
+      await sleep(delay);
+    }
+
+    try {
+      const { stdout } = await run(
+        `xcrun notarytool submit "${zipPath}" --key "${apiKeyPath}" --key-id "${apiKeyId}" --issuer "${issuerId}" --wait --timeout 30m`,
+        { timeout: NOTARIZATION_TIMEOUT_MS }
+      );
+
+      // Check for success
+      if (stdout.includes("status: Accepted")) {
+        console.log("  Notarization successful");
+        return;
+      } else if (stdout.includes("status: Invalid")) {
+        // Get detailed log for debugging
+        const submissionIdMatch = stdout.match(/id: ([a-f0-9-]+)/);
+        if (submissionIdMatch) {
+          const logCmd = `xcrun notarytool log ${submissionIdMatch[1]} --key "${apiKeyPath}" --key-id "${apiKeyId}" --issuer "${issuerId}"`;
+          console.error("\n  Notarization failed. Fetching log...");
+          try {
+            const { stdout: logOutput } = await run(logCmd);
+            console.error(logOutput);
+          } catch (logError) {
+            console.error(
+              `  Warning: Could not fetch notarization log: ${logError.message}`
+            );
+            console.error(
+              `  Note: If this is a network/auth error, it may be related to the notarization failure above.`
+            );
+            console.error(`  You can manually fetch the log with:`);
+            console.error(`    ${logCmd}`);
+          }
+        }
+        // Invalid status is not transient - fail immediately
+        throw new Error("Notarization failed: status Invalid");
+      } else {
+        // Unknown status - treat as failure to be safe
+        console.error("  Notarization returned unexpected status");
+        console.error(`  Output: ${stdout}`);
+        console.error("  Expected 'status: Accepted' but did not find it");
+        throw new Error(
+          "Notarization failed: unexpected response (status not Accepted)"
         );
-        console.error(`  You can manually fetch the log with:`);
-        console.error(`    ${logCmd}`);
+      }
+    } catch (error) {
+      lastError = error;
+
+      // Don't retry for non-transient errors (like "status: Invalid")
+      if (!isTransientError(error)) {
+        throw error;
+      }
+
+      console.warn(`  Transient error on attempt ${attempt}: ${error.message}`);
+
+      if (attempt === NOTARIZATION_MAX_RETRIES) {
+        console.error(
+          `  All ${NOTARIZATION_MAX_RETRIES} notarization attempts failed`
+        );
+        throw new Error(
+          `Notarization failed after ${NOTARIZATION_MAX_RETRIES} attempts: ${lastError.message}`
+        );
       }
     }
-    throw new Error("Notarization failed: status Invalid");
-  } else {
-    // Unknown status - treat as failure to be safe
-    console.error("  Notarization returned unexpected status");
-    console.error(`  Output: ${stdout}`);
-    console.error("  Expected 'status: Accepted' but did not find it");
-    throw new Error(
-      "Notarization failed: unexpected response (status not Accepted)"
-    );
   }
+
+  // Defensive: should never reach here, but guard against future refactoring
+  throw lastError ?? new Error("Notarization failed: unknown error");
 }
 
 // Note: Stapling is not possible for ZIP files or standalone binaries.
@@ -186,6 +306,7 @@ async function notarize(zipPath, apiKeyPath, apiKeyId, issuerId) {
  * @param {string} teamId - Apple Team ID
  * @param {string} customIdentity - Custom identity override
  * @returns {Promise<string>} Signing identity
+ * @throws {Error} If no matching certificate is found or keychain access fails
  */
 async function getSigningIdentity(teamId, customIdentity) {
   if (customIdentity && customIdentity !== "Developer ID Application") {
@@ -209,23 +330,29 @@ async function getSigningIdentity(teamId, customIdentity) {
         }
       }
     }
-  } catch (error) {
-    console.warn("  WARNING: Could not query keychain for signing identities");
-    console.warn(`  Reason: ${error.message}`);
-    console.warn(
-      `  Falling back to constructed identity: Developer ID Application: ${teamId}`
-    );
-    console.warn(
-      "  NOTE: If signing fails below, this keychain access failure is likely the root cause."
-    );
-    console.warn(
-      "  Check that your keychain is unlocked: security unlock-keychain"
-    );
-    console.warn("  Or use --list-identities to see available certificates");
-  }
 
-  // Fallback to simple format (may not work if name is required)
-  return `Developer ID Application: ${teamId}`;
+    // No matching identity found - this is a real error
+    throw new Error(
+      `No Developer ID Application certificate found for team ${teamId}.\n` +
+        `Run 'node scripts/sign-macos.mjs --list-identities' to see available certificates.`
+    );
+  } catch (error) {
+    // If it's our "not found" error, re-throw as-is
+    if (error.message.includes("No Developer ID Application certificate")) {
+      throw error;
+    }
+
+    // Keychain access failure - provide helpful context
+    throw new Error(
+      `Failed to query keychain for signing identities.\n` +
+        `Original error: ${error.message}\n\n` +
+        `Possible causes:\n` +
+        `  - Keychain is locked (try: security unlock-keychain)\n` +
+        `  - No Developer ID certificate installed\n` +
+        `  - Xcode Command Line Tools not properly configured\n\n` +
+        `Run 'node scripts/sign-macos.mjs --list-identities' to diagnose.`
+    );
+  }
 }
 
 /**
@@ -319,7 +446,8 @@ async function main() {
   console.log(`Output: ${distDir}`);
 
   let signed = 0;
-  let failed = 0;
+  let missing = 0;
+  const failures = [];
 
   for (const binaryName of MACOS_BINARIES) {
     const binaryPath = join(distDir, binaryName);
@@ -330,7 +458,7 @@ async function main() {
     if (!existsSync(binaryPath)) {
       console.warn(`Warning: Binary not found: ${binaryPath}`);
       console.warn("  Run 'pnpm run cli:build:all' first");
-      failed++;
+      missing++;
       continue;
     }
 
@@ -356,15 +484,21 @@ async function main() {
     } catch (error) {
       console.error(`\nFailed: ${binaryName}`);
       console.error(`  Error: ${error.message}`);
-      failed++;
+      failures.push({ binary: binaryName, error: error.message.split("\n")[0] });
     }
   }
 
   // Summary
   console.log(`\n=== Summary ===`);
   console.log(`Signed: ${signed}/${MACOS_BINARIES.length}`);
-  if (failed > 0) {
-    console.log(`Failed: ${failed}`);
+  if (missing > 0) {
+    console.log(`Missing: ${missing}`);
+  }
+  if (failures.length > 0) {
+    console.log(`Failed: ${failures.length}`);
+    for (const f of failures) {
+      console.log(`  - ${f.binary}: ${f.error}`);
+    }
   }
   if (!skipNotarize && signed > 0) {
     console.log(`\nNotarized ZIPs are ready for distribution:`);
@@ -376,7 +510,7 @@ async function main() {
     }
   }
 
-  if (failed > 0) {
+  if (missing > 0 || failures.length > 0) {
     process.exit(1);
   }
 

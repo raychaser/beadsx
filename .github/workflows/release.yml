@@ -182,6 +182,40 @@ jobs:
         run: |
           node scripts/sign-macos.mjs
 
+      # Verify signatures before cleanup (while keychain is still available if needed)
+      - name: Verify signed binaries
+        run: |
+          set -eo pipefail
+          echo "Verifying signed binaries..."
+          for arch in arm64 x64; do
+            ZIP_FILE="dist/bdx-darwin-${arch}.zip"
+            BINARY_NAME="bdx-darwin-${arch}"
+
+            if [ ! -f "$ZIP_FILE" ]; then
+              echo "Error: $ZIP_FILE not found"
+              exit 1
+            fi
+
+            # Extract and verify signature
+            TEMP_DIR=$(mktemp -d)
+            unzip -q "$ZIP_FILE" -d "$TEMP_DIR"
+
+            echo "Verifying $BINARY_NAME code signature..."
+            codesign --verify --verbose=2 "$TEMP_DIR/$BINARY_NAME"
+
+            # Verify notarization (spctl can be flaky in CI, so warn but don't fail)
+            echo "Checking $BINARY_NAME notarization status..."
+            SPCTL_OUTPUT=$(spctl --assess --type execute --verbose "$TEMP_DIR/$BINARY_NAME" 2>&1) || {
+              echo "::warning::spctl assessment failed for $BINARY_NAME: $SPCTL_OUTPUT"
+              echo "::warning::This may be a CI environment limitation"
+            }
+
+            # Clean up
+            rm -rf "$TEMP_DIR"
+            echo "✓ $BINARY_NAME signature verified"
+          done
+          echo "All signed binaries verified successfully"
+
       # Cleanup keychain (always runs, even on failure)
       - name: Cleanup keychain
         if: always()

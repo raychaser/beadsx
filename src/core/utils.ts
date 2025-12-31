@@ -1,7 +1,7 @@
 // Utility functions extracted for testability
 // Shared between VS Code extension and CLI
 
-import type { BeadsIssue, SortableIssue } from './types';
+import type { BeadsIssue, SortableIssue, SortMode } from './types';
 
 /**
  * Compute depth of each issue in a hierarchy.
@@ -78,10 +78,25 @@ export function formatTimeAgo(dateStr: string): string {
 }
 
 /**
- * Sort issues: open first (by priority), then closed sorted by most recently closed
+ * Sort issues based on the specified mode.
+ * - 'default': Open first (by priority), then closed by most recently closed
+ * - 'recent': All issues sorted by updated_at (most recently updated first)
  * Returns a new array (does not mutate input)
  */
-export function sortIssues<T extends SortableIssue>(issues: T[]): T[] {
+export function sortIssues<T extends SortableIssue>(issues: T[], mode: SortMode = 'default'): T[] {
+  if (mode === 'recent') {
+    // Sort all issues by updated_at (most recently updated first)
+    return [...issues].sort((a, b) => {
+      const aTime = new Date(a.updated_at).getTime();
+      const bTime = new Date(b.updated_at).getTime();
+      // Treat NaN as 0 (oldest)
+      const safeATime = Number.isNaN(aTime) ? 0 : aTime;
+      const safeBTime = Number.isNaN(bTime) ? 0 : bTime;
+      return safeBTime - safeATime; // Descending (most recent first)
+    });
+  }
+
+  // Default sort: open first (by priority), then closed by most recently closed
   return [...issues].sort((a, b) => {
     // Open issues come before closed
     if (a.status !== 'closed' && b.status === 'closed') return -1;

@@ -1,6 +1,6 @@
 // Re-export utils from core for backwards compatibility
 
-export type { SortableIssue } from './core/types';
+export type { SortableIssue, SortMode } from './core/types';
 export {
   computeIssueDepths,
   DEFAULT_RECENT_WINDOW_MINUTES,

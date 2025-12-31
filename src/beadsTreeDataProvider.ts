@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { BeadsIssue, type FilterMode, listFilteredIssuesWithConfig } from './beadsService';
-import { formatTimeAgo, sortIssues } from './utils';
+import { formatTimeAgo, type SortMode, sortIssues } from './utils';
 
 export { BeadsIssue };
 
@@ -283,10 +283,13 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
       await this.loadingPromise;
     }
 
+    // Determine sort mode based on filter mode
+    const sortMode: SortMode = this.filterMode === 'recent' ? 'recent' : 'default';
+
     if (element) {
       // Return children of this element (issues whose parentId matches this element's id)
       const children = this.issuesCache.filter((issue) => issue.parentId === element.id);
-      return sortIssues(children);
+      return sortIssues(children, sortMode);
     }
 
     // Return root issues (issues with no parent OR whose parent is not in the filtered cache)
@@ -296,7 +299,7 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
       const parentInCache = this.issuesCache.some((i) => i.id === issue.parentId);
       return !parentInCache;
     });
-    return sortIssues(roots);
+    return sortIssues(roots, sortMode);
   }
 
   getParent(element: BeadsIssue): BeadsIssue | undefined {

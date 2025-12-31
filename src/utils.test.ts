@@ -221,10 +221,27 @@ describe('formatTimeAgo', () => {
 });
 
 describe('sortIssues', () => {
+  // Helper to create a sortable issue with all required fields
+  const makeIssue = (
+    overrides: Partial<{
+      status: string;
+      priority: number;
+      closed_at: string | null;
+      updated_at: string;
+      id: string;
+    }>,
+  ) => ({
+    status: 'open',
+    priority: 2,
+    closed_at: null,
+    updated_at: '2025-01-01T00:00:00.000Z',
+    ...overrides,
+  });
+
   it('does not mutate the input array', () => {
     const original = [
-      { status: 'closed', priority: 2, closed_at: '2025-01-15T10:00:00.000Z' },
-      { status: 'open', priority: 2, closed_at: null },
+      makeIssue({ status: 'closed', closed_at: '2025-01-15T10:00:00.000Z' }),
+      makeIssue({ status: 'open' }),
     ];
     const originalCopy = [...original];
     sortIssues(original);
@@ -233,9 +250,9 @@ describe('sortIssues', () => {
 
   it('places open issues before closed issues', () => {
     const issues = [
-      { status: 'closed', priority: 2, closed_at: '2025-01-15T10:00:00.000Z' },
-      { status: 'open', priority: 2, closed_at: null },
-      { status: 'in_progress', priority: 2, closed_at: null },
+      makeIssue({ status: 'closed', closed_at: '2025-01-15T10:00:00.000Z' }),
+      makeIssue({ status: 'open' }),
+      makeIssue({ status: 'in_progress' }),
     ];
     const sorted = sortIssues(issues);
     expect(sorted[0].status).toBe('open');
@@ -245,9 +262,9 @@ describe('sortIssues', () => {
 
   it('sorts closed issues by recency (most recent first)', () => {
     const issues = [
-      { status: 'closed', priority: 2, closed_at: '2025-01-10T10:00:00.000Z' }, // oldest
-      { status: 'closed', priority: 2, closed_at: '2025-01-15T10:00:00.000Z' }, // newest
-      { status: 'closed', priority: 2, closed_at: '2025-01-12T10:00:00.000Z' }, // middle
+      makeIssue({ status: 'closed', closed_at: '2025-01-10T10:00:00.000Z' }), // oldest
+      makeIssue({ status: 'closed', closed_at: '2025-01-15T10:00:00.000Z' }), // newest
+      makeIssue({ status: 'closed', closed_at: '2025-01-12T10:00:00.000Z' }), // middle
     ];
     const sorted = sortIssues(issues);
     expect(sorted[0].closed_at).toBe('2025-01-15T10:00:00.000Z');
@@ -257,8 +274,8 @@ describe('sortIssues', () => {
 
   it('treats null closed_at as oldest', () => {
     const issues = [
-      { status: 'closed', priority: 2, closed_at: null },
-      { status: 'closed', priority: 2, closed_at: '2025-01-15T10:00:00.000Z' },
+      makeIssue({ status: 'closed', closed_at: null }),
+      makeIssue({ status: 'closed', closed_at: '2025-01-15T10:00:00.000Z' }),
     ];
     const sorted = sortIssues(issues);
     expect(sorted[0].closed_at).toBe('2025-01-15T10:00:00.000Z');
@@ -267,8 +284,8 @@ describe('sortIssues', () => {
 
   it('treats invalid date as oldest', () => {
     const issues = [
-      { status: 'closed', priority: 2, closed_at: 'invalid-date' },
-      { status: 'closed', priority: 2, closed_at: '2025-01-15T10:00:00.000Z' },
+      makeIssue({ status: 'closed', closed_at: 'invalid-date' }),
+      makeIssue({ status: 'closed', closed_at: '2025-01-15T10:00:00.000Z' }),
     ];
     const sorted = sortIssues(issues);
     expect(sorted[0].closed_at).toBe('2025-01-15T10:00:00.000Z');
@@ -277,46 +294,52 @@ describe('sortIssues', () => {
 
   it('sorts open issues by priority (lowest number first)', () => {
     const issues = [
-      { status: 'open', priority: 3, closed_at: null, id: 'low' },
-      { status: 'open', priority: 0, closed_at: null, id: 'critical' },
-      { status: 'open', priority: 2, closed_at: null, id: 'medium' },
+      makeIssue({ status: 'open', priority: 3, id: 'low' }),
+      makeIssue({ status: 'open', priority: 0, id: 'critical' }),
+      makeIssue({ status: 'open', priority: 2, id: 'medium' }),
     ];
     const sorted = sortIssues(issues);
-    // @ts-expect-error - id is for testing
     expect(sorted.map((i) => i.id)).toEqual(['critical', 'medium', 'low']);
   });
 
   it('maintains relative order for open issues with same priority', () => {
     const issues = [
-      { status: 'open', priority: 2, closed_at: null, id: 'first' },
-      { status: 'open', priority: 2, closed_at: null, id: 'second' },
-      { status: 'open', priority: 2, closed_at: null, id: 'third' },
+      makeIssue({ status: 'open', id: 'first' }),
+      makeIssue({ status: 'open', id: 'second' }),
+      makeIssue({ status: 'open', id: 'third' }),
     ];
     const sorted = sortIssues(issues);
-    // @ts-expect-error - id is for testing
     expect(sorted.map((i) => i.id)).toEqual(['first', 'second', 'third']);
   });
 
   it('sorts in_progress issues by priority alongside open issues', () => {
     const issues = [
-      { status: 'in_progress', priority: 3, closed_at: null, id: 'ip-low' },
-      { status: 'open', priority: 1, closed_at: null, id: 'open-high' },
-      { status: 'in_progress', priority: 0, closed_at: null, id: 'ip-critical' },
+      makeIssue({ status: 'in_progress', priority: 3, id: 'ip-low' }),
+      makeIssue({ status: 'open', priority: 1, id: 'open-high' }),
+      makeIssue({ status: 'in_progress', priority: 0, id: 'ip-critical' }),
     ];
     const sorted = sortIssues(issues);
-    // @ts-expect-error - id is for testing
     expect(sorted.map((i) => i.id)).toEqual(['ip-critical', 'open-high', 'ip-low']);
   });
 
   it('sorts open by priority and closed by recency in combined list', () => {
     const issues = [
-      { status: 'closed', priority: 0, closed_at: '2025-01-10T10:00:00.000Z', id: 'closed-old' },
-      { status: 'open', priority: 2, closed_at: null, id: 'open-low' },
-      { status: 'closed', priority: 0, closed_at: '2025-01-15T10:00:00.000Z', id: 'closed-new' },
-      { status: 'open', priority: 0, closed_at: null, id: 'open-high' },
+      makeIssue({
+        status: 'closed',
+        priority: 0,
+        closed_at: '2025-01-10T10:00:00.000Z',
+        id: 'closed-old',
+      }),
+      makeIssue({ status: 'open', priority: 2, id: 'open-low' }),
+      makeIssue({
+        status: 'closed',
+        priority: 0,
+        closed_at: '2025-01-15T10:00:00.000Z',
+        id: 'closed-new',
+      }),
+      makeIssue({ status: 'open', priority: 0, id: 'open-high' }),
     ];
     const sorted = sortIssues(issues);
-    // @ts-expect-error - id is for testing
     expect(sorted.map((i) => i.id)).toEqual([
       'open-high', // open, priority 0
       'open-low', // open, priority 2
@@ -327,12 +350,11 @@ describe('sortIssues', () => {
 
   it('handles negative and large priority values', () => {
     const issues = [
-      { status: 'open', priority: 100, closed_at: null, id: 'very-low' },
-      { status: 'open', priority: -1, closed_at: null, id: 'negative' },
-      { status: 'open', priority: 0, closed_at: null, id: 'zero' },
+      makeIssue({ status: 'open', priority: 100, id: 'very-low' }),
+      makeIssue({ status: 'open', priority: -1, id: 'negative' }),
+      makeIssue({ status: 'open', priority: 0, id: 'zero' }),
     ];
     const sorted = sortIssues(issues);
-    // @ts-expect-error - id is for testing
     expect(sorted.map((i) => i.id)).toEqual(['negative', 'zero', 'very-low']);
   });
 
@@ -342,10 +364,107 @@ describe('sortIssues', () => {
   });
 
   it('handles single element array', () => {
-    const issues = [{ status: 'open', priority: 2, closed_at: null }];
+    const issues = [makeIssue({ status: 'open' })];
     const sorted = sortIssues(issues);
     expect(sorted).toHaveLength(1);
     expect(sorted[0].status).toBe('open');
+  });
+
+  // Tests for 'recent' sort mode
+  describe('recent mode', () => {
+    it('sorts all issues by updated_at (most recent first)', () => {
+      const issues = [
+        makeIssue({ id: 'old', updated_at: '2025-01-10T10:00:00.000Z' }),
+        makeIssue({ id: 'newest', updated_at: '2025-01-15T10:00:00.000Z' }),
+        makeIssue({ id: 'middle', updated_at: '2025-01-12T10:00:00.000Z' }),
+      ];
+      const sorted = sortIssues(issues, 'recent');
+      expect(sorted.map((i) => i.id)).toEqual(['newest', 'middle', 'old']);
+    });
+
+    it('ignores status when sorting by updated_at', () => {
+      const issues = [
+        makeIssue({
+          id: 'closed-recent',
+          status: 'closed',
+          updated_at: '2025-01-15T10:00:00.000Z',
+        }),
+        makeIssue({ id: 'open-old', status: 'open', updated_at: '2025-01-10T10:00:00.000Z' }),
+        makeIssue({
+          id: 'in_progress',
+          status: 'in_progress',
+          updated_at: '2025-01-12T10:00:00.000Z',
+        }),
+      ];
+      const sorted = sortIssues(issues, 'recent');
+      expect(sorted.map((i) => i.id)).toEqual(['closed-recent', 'in_progress', 'open-old']);
+    });
+
+    it('ignores priority when sorting by updated_at', () => {
+      const issues = [
+        makeIssue({
+          id: 'low-priority-recent',
+          priority: 4,
+          updated_at: '2025-01-15T10:00:00.000Z',
+        }),
+        makeIssue({ id: 'critical-old', priority: 0, updated_at: '2025-01-10T10:00:00.000Z' }),
+      ];
+      const sorted = sortIssues(issues, 'recent');
+      expect(sorted.map((i) => i.id)).toEqual(['low-priority-recent', 'critical-old']);
+    });
+
+    it('treats invalid updated_at as oldest', () => {
+      const issues = [
+        makeIssue({ id: 'invalid', updated_at: 'invalid-date' }),
+        makeIssue({ id: 'valid', updated_at: '2025-01-15T10:00:00.000Z' }),
+      ];
+      const sorted = sortIssues(issues, 'recent');
+      expect(sorted.map((i) => i.id)).toEqual(['valid', 'invalid']);
+    });
+
+    it('handles empty array', () => {
+      const sorted = sortIssues([], 'recent');
+      expect(sorted).toEqual([]);
+    });
+
+    it('does not mutate the input array', () => {
+      const original = [
+        makeIssue({ id: 'a', updated_at: '2025-01-15T10:00:00.000Z' }),
+        makeIssue({ id: 'b', updated_at: '2025-01-10T10:00:00.000Z' }),
+      ];
+      const originalCopy = [...original];
+      sortIssues(original, 'recent');
+      expect(original).toEqual(originalCopy);
+    });
+
+    it('handles single element array', () => {
+      const issues = [makeIssue({ id: 'only', updated_at: '2025-01-15T10:00:00.000Z' })];
+      const sorted = sortIssues(issues, 'recent');
+      expect(sorted).toHaveLength(1);
+      expect(sorted[0].id).toBe('only');
+    });
+
+    it('maintains relative order for issues with same updated_at (stable sort)', () => {
+      const sameTimestamp = '2025-01-15T10:00:00.000Z';
+      const issues = [
+        makeIssue({ id: 'first', updated_at: sameTimestamp }),
+        makeIssue({ id: 'second', updated_at: sameTimestamp }),
+        makeIssue({ id: 'third', updated_at: sameTimestamp }),
+      ];
+      const sorted = sortIssues(issues, 'recent');
+      // Array.sort is stable in modern JS (ES2019+), so order should be preserved
+      expect(sorted.map((i) => i.id)).toEqual(['first', 'second', 'third']);
+    });
+  });
+
+  it('uses default mode when no mode parameter is provided', () => {
+    const issues = [
+      makeIssue({ status: 'closed', closed_at: '2025-01-15T10:00:00.000Z' }),
+      makeIssue({ status: 'open' }),
+    ];
+    const sortedNoArg = sortIssues(issues);
+    const sortedDefault = sortIssues(issues, 'default');
+    expect(sortedNoArg).toEqual(sortedDefault);
   });
 });
 

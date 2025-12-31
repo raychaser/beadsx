@@ -45,12 +45,28 @@ export interface Logger {
   error(message: string): void;
 }
 
-// Reusable interface for sortable issues
-// Uses IssueStatus | string for compatibility with external data that may have unknown statuses
+/**
+ * Sort mode for issue lists.
+ * - 'default': Open issues first (sorted by priority, lower = higher), then closed issues by recency
+ * - 'recent': All issues sorted by updated_at timestamp (most recently updated first)
+ */
+export type SortMode = 'default' | 'recent';
+
+/**
+ * Minimum interface for sortable issues.
+ * Any type with these fields can be sorted using sortIssues().
+ *
+ * @remarks
+ * - `status` uses `IssueStatus | string` for compatibility with external data
+ * - `priority` uses lower-is-higher ordering (0 = critical, 4 = backlog)
+ * - `closed_at` should be set when `status === 'closed'`
+ * - `updated_at` and `closed_at` should be ISO 8601 date strings; invalid dates are treated as oldest
+ */
 export interface SortableIssue {
   status: IssueStatus | string;
   priority: number;
   closed_at: string | null;
+  updated_at: string;
 }
 
 // Result type for operations that can fail - discriminated union prevents illegal states
