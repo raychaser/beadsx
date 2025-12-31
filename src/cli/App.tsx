@@ -94,6 +94,10 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
   const setErrorRef = useRef(setError);
   setErrorRef.current = setError;
 
+  // Ref for scroll offset to avoid stale closures in keyboard handlers
+  const scrollOffsetRef = useRef(scrollOffset);
+  scrollOffsetRef.current = scrollOffset;
+
   // Auto-refresh timer - uses refs to prevent interval recreation
   // Wraps call in async handler to properly catch any errors and update UI
   useEffect(() => {
@@ -196,12 +200,12 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
     }
 
     // Tree view mode keyboard handling
-    // Navigation with scroll handling
+    // Navigation with scroll handling (uses ref to avoid stale closure)
     if (key === 'up' || key === 'k') {
       setSelectedIndex((i) => {
         const newIndex = Math.max(0, i - 1);
         // Scroll up if selection moves above visible area
-        if (newIndex < scrollOffset) {
+        if (newIndex < scrollOffsetRef.current) {
           setScrollOffset(newIndex);
         }
         return newIndex;
@@ -210,7 +214,7 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
       setSelectedIndex((i) => {
         const newIndex = Math.min(visibleIssues.length - 1, i + 1);
         // Scroll down if selection moves below visible area
-        if (newIndex >= scrollOffset + treeHeight) {
+        if (newIndex >= scrollOffsetRef.current + treeHeight) {
           setScrollOffset(newIndex - treeHeight + 1);
         }
         return newIndex;
