@@ -23,6 +23,7 @@ export type {
   IssueType,
   Logger,
   SortableIssue,
+  SortMode,
 } from './types';
 
 export {

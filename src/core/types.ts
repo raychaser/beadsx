@@ -45,12 +45,16 @@ export interface Logger {
   error(message: string): void;
 }
 
+// Sort mode for sortIssues function
+export type SortMode = 'default' | 'recent';
+
 // Reusable interface for sortable issues
 // Uses IssueStatus | string for compatibility with external data that may have unknown statuses
 export interface SortableIssue {
   status: IssueStatus | string;
   priority: number;
   closed_at: string | null;
+  updated_at: string;
 }
 
 // Result type for operations that can fail - discriminated union prevents illegal states
