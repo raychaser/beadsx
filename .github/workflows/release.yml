@@ -182,18 +182,10 @@ jobs:
         run: |
           node scripts/sign-macos.mjs
 
-      # Cleanup keychain (always runs, even on failure)
-      - name: Cleanup keychain
-        if: always()
-        run: |
-          if [ -n "$KEYCHAIN_PATH" ] && [ -f "$KEYCHAIN_PATH" ]; then
-            security delete-keychain "$KEYCHAIN_PATH" || echo "::warning::Failed to delete keychain at $KEYCHAIN_PATH"
-          fi
-          rm -f ~/.private_keys/AuthKey_*.p8 || echo "::warning::Failed to clean up API key files"
-          rm -f "$RUNNER_TEMP/certificate.p12" || echo "::warning::Failed to clean up certificate file"
-
+      # Verify signatures before cleanup (while keychain is still available if needed)
       - name: Verify signed binaries
         run: |
+          set -e
           echo "Verifying signed binaries..."
           for arch in arm64 x64; do
             ZIP_FILE="dist/bdx-darwin-${arch}.zip"
@@ -208,14 +200,30 @@ jobs:
             TEMP_DIR=$(mktemp -d)
             unzip -q "$ZIP_FILE" -d "$TEMP_DIR"
 
-            echo "Verifying $BINARY_NAME signature..."
+            echo "Verifying $BINARY_NAME code signature..."
             codesign --verify --verbose=2 "$TEMP_DIR/$BINARY_NAME"
+
+            # Verify notarization (spctl can be flaky in CI, so warn but don't fail)
+            echo "Checking $BINARY_NAME notarization status..."
+            if ! spctl --assess --type execute --verbose "$TEMP_DIR/$BINARY_NAME" 2>&1; then
+              echo "::warning::spctl assessment failed for $BINARY_NAME (may be CI environment limitation)"
+            fi
 
             # Clean up
             rm -rf "$TEMP_DIR"
             echo "✓ $BINARY_NAME signature verified"
           done
           echo "All signed binaries verified successfully"
+
+      # Cleanup keychain (always runs, even on failure)
+      - name: Cleanup keychain
+        if: always()
+        run: |
+          if [ -n "$KEYCHAIN_PATH" ] && [ -f "$KEYCHAIN_PATH" ]; then
+            security delete-keychain "$KEYCHAIN_PATH" || echo "::warning::Failed to delete keychain at $KEYCHAIN_PATH"
+          fi
+          rm -f ~/.private_keys/AuthKey_*.p8 || echo "::warning::Failed to clean up API key files"
+          rm -f "$RUNNER_TEMP/certificate.p12" || echo "::warning::Failed to clean up certificate file"
 
       - name: Upload signed macOS binaries
         uses: actions/upload-artifact@v4
