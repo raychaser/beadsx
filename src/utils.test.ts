@@ -426,6 +426,45 @@ describe('sortIssues', () => {
       const sorted = sortIssues([], 'recent');
       expect(sorted).toEqual([]);
     });
+
+    it('does not mutate the input array', () => {
+      const original = [
+        makeIssue({ id: 'a', updated_at: '2025-01-15T10:00:00.000Z' }),
+        makeIssue({ id: 'b', updated_at: '2025-01-10T10:00:00.000Z' }),
+      ];
+      const originalCopy = [...original];
+      sortIssues(original, 'recent');
+      expect(original).toEqual(originalCopy);
+    });
+
+    it('handles single element array', () => {
+      const issues = [makeIssue({ id: 'only', updated_at: '2025-01-15T10:00:00.000Z' })];
+      const sorted = sortIssues(issues, 'recent');
+      expect(sorted).toHaveLength(1);
+      expect(sorted[0].id).toBe('only');
+    });
+
+    it('maintains relative order for issues with same updated_at (stable sort)', () => {
+      const sameTimestamp = '2025-01-15T10:00:00.000Z';
+      const issues = [
+        makeIssue({ id: 'first', updated_at: sameTimestamp }),
+        makeIssue({ id: 'second', updated_at: sameTimestamp }),
+        makeIssue({ id: 'third', updated_at: sameTimestamp }),
+      ];
+      const sorted = sortIssues(issues, 'recent');
+      // Array.sort is stable in modern JS (ES2019+), so order should be preserved
+      expect(sorted.map((i) => i.id)).toEqual(['first', 'second', 'third']);
+    });
+  });
+
+  it('uses default mode when no mode parameter is provided', () => {
+    const issues = [
+      makeIssue({ status: 'closed', closed_at: '2025-01-15T10:00:00.000Z' }),
+      makeIssue({ status: 'open' }),
+    ];
+    const sortedNoArg = sortIssues(issues);
+    const sortedDefault = sortIssues(issues, 'default');
+    expect(sortedNoArg).toEqual(sortedDefault);
   });
 });
 
