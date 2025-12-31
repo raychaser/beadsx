@@ -3,52 +3,51 @@
 
 import { createCliRenderer } from '@opentui/core';
 import { createRoot } from '@opentui/react';
+import { Command } from 'commander';
 import * as path from 'node:path';
 import { stat } from 'node:fs/promises';
 import { configure, isBeadsInitialized, type Logger } from '../core';
 import { App } from './App';
+import pkg from '../../package.json';
 
-// Parse command line arguments
-// Note: Bun compiled binaries include internal paths in argv, so we filter them out
-// argv[2] contains the invocation path (e.g., "./bdx" or "/path/to/bdx") which must be filtered
-// We use process.execPath to get the real filesystem path for comparison
+// Build clean argv for Commander
+// Bun compiled binaries have quirky argv - need [node, script, ...args] format
 const realBinaryPath = path.resolve(process.execPath);
-const args = process.argv.slice(2).filter((arg) => {
-  // Filter Bun's internal filesystem paths
+const userArgs = process.argv.slice(2).filter((arg) => {
   if (arg.includes('/$bunfs/')) return false;
-  // Filter the binary path (Bun includes it in argv[2] when compiled)
-  // Resolve to handle relative paths like "./bdx"
   if (path.resolve(arg) === realBinaryPath) return false;
   return true;
 });
-const verbose = args.includes('--verbose') || args.includes('-v');
-const showHelp = args.includes('--help') || args.includes('-h');
-const noDb = args.includes('--no-db');
+// Commander expects [execPath, scriptPath, ...userArgs]
+const commanderArgv = [process.execPath, 'bdx', ...userArgs];
 
-// Filter out flags to get workspace path
-const nonFlagArgs = args.filter((arg) => !arg.startsWith('-'));
-const rawWorkspaceRoot = nonFlagArgs[0] || process.cwd();
-const workspaceRoot = path.resolve(rawWorkspaceRoot);
+const program = new Command();
 
-// Show help and exit
-if (showHelp) {
-  console.log('Usage: bdx [options] [workspace-path]');
-  console.log('');
-  console.log('Interactive TUI for beads issue tracking');
-  console.log('');
-  console.log('Options:');
-  console.log('  -h, --help     Show this help message');
-  console.log('  -v, --verbose  Enable verbose logging');
-  console.log('  --no-db        Use JSONL mode (prevents auto-discovery of parent databases)');
-  console.log('');
-  console.log('Keyboard shortcuts:');
-  console.log('  j/k or arrows  Navigate up/down');
-  console.log('  h/l or arrows  Collapse/expand');
-  console.log('  1-4            Switch filter (All/Open/Ready/Recent)');
-  console.log('  r              Refresh');
-  console.log('  q              Quit');
-  process.exit(0);
-}
+program
+  .name('bdx')
+  .description('Interactive TUI for beads issue tracking')
+  .version(pkg.version)
+  .argument('[workspace-path]', 'Path to workspace directory (default: current directory)')
+  .option('-v, --verbose', 'Enable verbose logging')
+  // Commander.js: defining only --no-db makes opts.db default to true
+  // When user passes --no-db, opts.db becomes false
+  .option('--no-db', 'Use JSONL mode (prevents auto-discovery of parent databases)')
+  .addHelpText(
+    'after',
+    `
+Keyboard shortcuts:
+  j/k or arrows  Navigate up/down
+  h/l or arrows  Collapse/expand
+  1-4            Switch filter (All/Open/Ready/Recent)
+  r              Refresh
+  q              Quit`
+  )
+  .parse(commanderArgv);
+
+const opts = program.opts<{ verbose?: boolean; db: boolean }>();
+const verbose = opts.verbose ?? false;
+const noDb = !opts.db;
+const workspaceRoot = path.resolve(program.args[0] ?? process.cwd());
 
 // Configure the core service with logger
 const logger: Logger = {
@@ -66,6 +65,8 @@ configure({ useJsonlMode: noDb }, logger, (message, type) => {
     console.error(`Error: ${message}`);
   } else if (type === 'warn') {
     console.error(`Warning: ${message}`);
+  } else if (type === 'info' && verbose) {
+    console.error(`Info: ${message}`);
   }
 });
 

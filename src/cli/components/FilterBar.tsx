@@ -10,11 +10,11 @@ interface FilterBarProps {
   lastRefresh: Date;
 }
 
-const FILTERS: { key: string; mode: FilterMode; label: string }[] = [
-  { key: '1', mode: 'all', label: 'All' },
-  { key: '2', mode: 'open', label: 'Open' },
-  { key: '3', mode: 'ready', label: 'Ready' },
-  { key: '4', mode: 'recent', label: 'Recent' },
+const FILTERS: { mode: FilterMode; label: string }[] = [
+  { mode: 'all', label: 'All' },
+  { mode: 'open', label: 'Open' },
+  { mode: 'ready', label: 'Ready' },
+  { mode: 'recent', label: 'Recent' },
 ];
 
 const DEFAULT_TERMINAL_WIDTH = 80;
@@ -27,7 +27,7 @@ export function FilterBar({ filter, lastRefresh }: FilterBarProps) {
   // Force re-render every second to update the time display
   const [tick, setTick] = useState(0);
   useEffect(() => {
-    const interval = setInterval(() => setTick((t) => t + 1), 1000);
+    const interval = setInterval(() => setTick((t) => (t + 1) % 60), 1000);
     return () => clearInterval(interval);
   }, []);
 

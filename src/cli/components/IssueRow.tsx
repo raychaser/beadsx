@@ -63,7 +63,7 @@ export function IssueRow({
   const typeLen = 2; // emoji typically renders as 2 cells in most terminals
   const idLen = (shortId || '').length;
   const spacesLen = 4; // 4 spaces between elements
-  const timeAgoDisplayLen = timeAgo ? timeAgo.length + 2 : 0; // "(timeAgo)" at right edge
+  const timeAgoDisplayLen = timeAgo ? timeAgo.length + 2 : 0; // +2 for parentheses: "({timeAgo})"
 
   const fixedWidth = prefixLen + statusLen + priorityLen + typeLen + idLen + spacesLen + timeAgoDisplayLen;
   const availableWidth = Math.max(0, terminalWidth - fixedWidth);
