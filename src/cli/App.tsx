@@ -1,6 +1,6 @@
 // Main App component for bdx CLI
 
-import { useKeyboard } from '@opentui/react';
+import { useKeyboard, useTerminalDimensions } from '@opentui/react';
 import type { KeyEvent } from '@opentui/core';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -21,8 +21,13 @@ interface AppProps {
 }
 
 const REFRESH_INTERVAL_MS = 5000; // 5 seconds
+const DEFAULT_TERMINAL_HEIGHT = 24;
 
 export function App({ workspaceRoot, onQuit }: AppProps) {
+  const { height: rawHeight } = useTerminalDimensions();
+  // Use sensible fallback if terminal height is invalid
+  const terminalHeight = typeof rawHeight === 'number' && rawHeight > 0 ? rawHeight : DEFAULT_TERMINAL_HEIGHT;
+
   const [issues, setIssues] = useState<BeadsIssue[]>([]);
   const [filter, setFilter] = useState<FilterMode>('recent');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -30,11 +35,15 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [scrollOffset, setScrollOffset] = useState(0);
 
   // Detail view state
   const [viewMode, setViewMode] = useState<'tree' | 'detail'>('tree');
   const [detailStack, setDetailStack] = useState<string[]>([]); // Stack of issue IDs for navigation history
   const [selectedChildIndex, setSelectedChildIndex] = useState(0);
+
+  // Calculate available height for issue tree (terminal - FilterBar - StatusBar)
+  const treeHeight = Math.max(1, terminalHeight - 2);
 
   // Load issues
   const loadIssues = useCallback(async () => {
@@ -187,11 +196,25 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
     }
 
     // Tree view mode keyboard handling
-    // Navigation
+    // Navigation with scroll handling
     if (key === 'up' || key === 'k') {
-      setSelectedIndex((i) => Math.max(0, i - 1));
+      setSelectedIndex((i) => {
+        const newIndex = Math.max(0, i - 1);
+        // Scroll up if selection moves above visible area
+        if (newIndex < scrollOffset) {
+          setScrollOffset(newIndex);
+        }
+        return newIndex;
+      });
     } else if (key === 'down' || key === 'j') {
-      setSelectedIndex((i) => Math.min(visibleIssues.length - 1, i + 1));
+      setSelectedIndex((i) => {
+        const newIndex = Math.min(visibleIssues.length - 1, i + 1);
+        // Scroll down if selection moves below visible area
+        if (newIndex >= scrollOffset + treeHeight) {
+          setScrollOffset(newIndex - treeHeight + 1);
+        }
+        return newIndex;
+      });
     }
 
     // Enter: Open detail view
@@ -221,19 +244,23 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
       }
     }
 
-    // Filter shortcuts
+    // Filter shortcuts - reset selection and scroll on filter change
     else if (key === '1') {
       setFilter('all');
       setSelectedIndex(0);
+      setScrollOffset(0);
     } else if (key === '2') {
       setFilter('open');
       setSelectedIndex(0);
+      setScrollOffset(0);
     } else if (key === '3') {
       setFilter('ready');
       setSelectedIndex(0);
+      setScrollOffset(0);
     } else if (key === '4') {
       setFilter('recent');
       setSelectedIndex(0);
+      setScrollOffset(0);
     }
 
     // Refresh
@@ -246,15 +273,20 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
     }
   });
 
-  // Keep selection in bounds
+  // Keep selection and scroll offset in bounds
   useEffect(() => {
     if (selectedIndex >= visibleIssues.length) {
       setSelectedIndex(Math.max(0, visibleIssues.length - 1));
     }
-  }, [visibleIssues.length, selectedIndex]);
+    // Ensure scroll offset is valid
+    const maxOffset = Math.max(0, visibleIssues.length - treeHeight);
+    if (scrollOffset > maxOffset) {
+      setScrollOffset(maxOffset);
+    }
+  }, [visibleIssues.length, selectedIndex, scrollOffset, treeHeight]);
 
   return (
-    <box flexDirection="column">
+    <box flexDirection="column" height={terminalHeight}>
       {viewMode === 'tree' && <FilterBar filter={filter} lastRefresh={lastRefresh} />}
       <box flexDirection="column" flexGrow={1}>
         {error ? (
@@ -274,11 +306,15 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
             issues={issues}
             visibleIssues={visibleIssues}
             expandedIds={expandedIds}
+            scrollOffset={scrollOffset}
+            treeHeight={treeHeight}
             selectedIndex={selectedIndex}
           />
         )}
       </box>
-      {viewMode === 'tree' && <StatusBar issues={issues} />}
+      {viewMode === 'tree' && (
+        <StatusBar issues={issues} scrollInfo={{ offset: scrollOffset, visible: treeHeight, total: visibleIssues.length }} />
+      )}
     </box>
   );
 }

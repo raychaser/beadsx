@@ -10,9 +10,18 @@ interface IssueTreeProps {
   visibleIssues: BeadsIssue[];
   expandedIds: Set<string>;
   selectedIndex: number;
+  scrollOffset: number;
+  treeHeight: number;
 }
 
-export function IssueTree({ issues, visibleIssues, expandedIds, selectedIndex }: IssueTreeProps) {
+export function IssueTree({
+  issues,
+  visibleIssues,
+  expandedIds,
+  selectedIndex,
+  scrollOffset,
+  treeHeight,
+}: IssueTreeProps) {
   // Pre-compute depths using memoized Map for O(1) lookups
   const depthMap = useMemo(() => computeIssueDepths(issues), [issues]);
 
@@ -39,19 +48,26 @@ export function IssueTree({ issues, visibleIssues, expandedIds, selectedIndex }:
     return siblings[siblings.length - 1]?.id === issue.id;
   };
 
+  // Slice visible issues based on scroll offset and tree height
+  const displayedIssues = visibleIssues.slice(scrollOffset, scrollOffset + treeHeight);
+
   return (
     <box flexDirection="column">
-      {visibleIssues.map((issue, index) => (
-        <IssueRow
-          key={issue.id}
-          issue={issue}
-          depth={depthMap.get(issue.id) ?? 0}
-          isExpanded={expandedIds.has(issue.id)}
-          hasChildren={childrenSet.has(issue.id)}
-          isSelected={index === selectedIndex}
-          isLastChild={isLastChild(issue)}
-        />
-      ))}
+      {displayedIssues.map((issue) => {
+        // Find original index in visibleIssues for selection state
+        const originalIndex = visibleIssues.indexOf(issue);
+        return (
+          <IssueRow
+            key={issue.id}
+            issue={issue}
+            depth={depthMap.get(issue.id) ?? 0}
+            isExpanded={expandedIds.has(issue.id)}
+            hasChildren={childrenSet.has(issue.id)}
+            isSelected={originalIndex === selectedIndex}
+            isLastChild={isLastChild(issue)}
+          />
+        );
+      })}
     </box>
   );
 }
