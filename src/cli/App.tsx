@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   type BeadsIssue,
   type FilterMode,
+  type SortMode,
   getRootIssues,
   listFilteredIssues,
   sortIssues,
@@ -116,12 +117,14 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
   // Build flat list of visible issues for navigation
   const getVisibleIssues = useCallback((): BeadsIssue[] => {
     const visible: BeadsIssue[] = [];
-    const roots = sortIssues(getRootIssues(issues));
+    // Determine sort mode based on filter mode (same logic as VSCode extension)
+    const sortMode: SortMode = filter === 'recent' ? 'recent' : 'default';
+    const roots = sortIssues(getRootIssues(issues), sortMode);
 
     const addWithChildren = (issue: BeadsIssue, depth: number) => {
       visible.push(issue);
       if (expandedIds.has(issue.id)) {
-        const children = sortIssues(issues.filter((i) => i.parentId === issue.id));
+        const children = sortIssues(issues.filter((i) => i.parentId === issue.id), sortMode);
         for (const child of children) {
           addWithChildren(child, depth + 1);
         }
@@ -133,7 +136,7 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
     }
 
     return visible;
-  }, [issues, expandedIds]);
+  }, [issues, expandedIds, filter]);
 
   const visibleIssues = getVisibleIssues();
   const selectedIssue = visibleIssues[selectedIndex];

@@ -8,6 +8,7 @@ import * as path from 'node:path';
 import { stat } from 'node:fs/promises';
 import { configure, isBeadsInitialized, type Logger } from '../core';
 import { App } from './App';
+import pkg from '../../package.json';
 
 // Build clean argv for Commander
 // Bun compiled binaries have quirky argv - need [node, script, ...args] format
@@ -25,9 +26,11 @@ const program = new Command();
 program
   .name('bdx')
   .description('Interactive TUI for beads issue tracking')
-  .version('0.2.12')
+  .version(pkg.version)
   .argument('[workspace-path]', 'Path to workspace directory (default: current directory)')
   .option('-v, --verbose', 'Enable verbose logging')
+  // Commander.js: defining only --no-db makes opts.db default to true
+  // When user passes --no-db, opts.db becomes false
   .option('--no-db', 'Use JSONL mode (prevents auto-discovery of parent databases)')
   .addHelpText(
     'after',
@@ -62,6 +65,8 @@ configure({ useJsonlMode: noDb }, logger, (message, type) => {
     console.error(`Error: ${message}`);
   } else if (type === 'warn') {
     console.error(`Warning: ${message}`);
+  } else if (type === 'info' && verbose) {
+    console.error(`Info: ${message}`);
   }
 });
 
