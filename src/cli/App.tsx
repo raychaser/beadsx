@@ -44,6 +44,9 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
   const [detailStack, setDetailStack] = useState<string[]>([]); // Stack of issue IDs for navigation history
   const [selectedChildIndex, setSelectedChildIndex] = useState(0);
 
+  // Track previously seen issue IDs to detect new issues on refresh
+  const previousIssueIdsRef = useRef<Set<string>>(new Set());
+
   // Calculate available height for issue tree (terminal - FilterBar - StatusBar)
   const treeHeight = Math.max(1, terminalHeight - 2);
 
@@ -63,27 +66,58 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
       setIssues(loaded);
       setLastRefresh(new Date());
 
-      // Auto-expand issues on first load based on filter mode
+      // Build set of current issue IDs
+      const currentIds = new Set(loaded.map((i) => i.id));
+      const previousIds = previousIssueIdsRef.current;
+
+      // Determine which issues should be auto-expanded
+      const shouldExpandIssue = (issue: BeadsIssue): boolean => {
+        const hasChildren = loaded.some((i) => i.parentId === issue.id);
+        if (!hasChildren) return false;
+
+        if (filter === 'recent') {
+          // For Recent view: expand if issue is in_progress OR subtree contains important work
+          return issue.status === 'in_progress' || shouldAutoExpandInRecent(issue, loaded);
+        }
+        // For other views: expand all non-closed issues with children
+        return issue.status !== 'closed';
+      };
+
       if (loading) {
+        // Initial load: compute full expansion state
         const toExpand = new Set<string>();
         for (const issue of loaded) {
-          const hasChildren = loaded.some((i) => i.parentId === issue.id);
-          if (!hasChildren) continue;
-
-          if (filter === 'recent') {
-            // For Recent view: expand if issue is in_progress OR subtree contains important work
-            if (issue.status === 'in_progress' || shouldAutoExpandInRecent(issue, loaded)) {
-              toExpand.add(issue.id);
-            }
-          } else {
-            // For other views: expand all non-closed issues with children
-            if (issue.status !== 'closed') {
-              toExpand.add(issue.id);
-            }
+          if (shouldExpandIssue(issue)) {
+            toExpand.add(issue.id);
           }
         }
         setExpandedIds(toExpand);
+      } else {
+        // Refresh: only expand newly-discovered issues (preserve user toggles for existing)
+        const newIssueIds = new Set([...currentIds].filter((id) => !previousIds.has(id)));
+        if (newIssueIds.size > 0) {
+          const newToExpand: string[] = [];
+          for (const issue of loaded) {
+            // Only consider new issues for auto-expansion
+            if (newIssueIds.has(issue.id) && shouldExpandIssue(issue)) {
+              newToExpand.push(issue.id);
+            }
+          }
+          // Merge with existing expanded IDs (additive only, preserves user collapses)
+          if (newToExpand.length > 0) {
+            setExpandedIds((prev) => {
+              const next = new Set(prev);
+              for (const id of newToExpand) {
+                next.add(id);
+              }
+              return next;
+            });
+          }
+        }
       }
+
+      // Update previous IDs for next refresh
+      previousIssueIdsRef.current = currentIds;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       console.error(`[error] Failed to load issues: ${errorMessage}`);
