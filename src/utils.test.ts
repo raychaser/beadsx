@@ -783,4 +783,81 @@ describe('shouldAutoExpandInRecent', () => {
     // Branch2 should expand because leaf2 is P1
     expect(shouldAutoExpandInRecent(branch2, allIssues)).toBe(true);
   });
+
+  it('returns false when allIssues is empty', () => {
+    const parent = makeIssue('parent', {});
+    expect(shouldAutoExpandInRecent(parent, [])).toBe(false);
+  });
+
+  it('handles self-referencing circular parent (A->A)', () => {
+    // Issue references itself as parent - should not infinite loop
+    // With P1 priority, it qualifies as important before cycle detection kicks in
+    const selfRef = makeIssue('self', { parentId: 'self', priority: 1 });
+    const allIssues = [selfRef];
+    // Returns true because selfRef is its own child with P1 (important priority)
+    expect(shouldAutoExpandInRecent(selfRef, allIssues)).toBe(true);
+  });
+
+  it('handles self-referencing with P4 priority (breaks cycle safely)', () => {
+    // Self-reference with backlog priority - tests that cycle detection works
+    const selfRef = makeIssue('self', { parentId: 'self', priority: 4 });
+    const allIssues = [selfRef];
+    // P4 doesn't qualify, and recursion is blocked by cycle detection
+    expect(shouldAutoExpandInRecent(selfRef, allIssues)).toBe(false);
+  });
+
+  it('handles two-node circular reference (A->B->A)', () => {
+    // A's parent is B, B's parent is A
+    const issueA = makeIssue('A', { parentId: 'B', priority: 1 });
+    const issueB = makeIssue('B', { parentId: 'A', priority: 1 });
+    const allIssues = [issueA, issueB];
+    // Should not infinite loop - cycle detection breaks it
+    expect(shouldAutoExpandInRecent(issueA, allIssues)).toBe(true); // B is child of A with P1
+    expect(shouldAutoExpandInRecent(issueB, allIssues)).toBe(true); // A is child of B with P1
+  });
+
+  it('handles three-node circular reference (A->B->C->A)', () => {
+    // A->B->C->A cycle
+    const issueA = makeIssue('A', { parentId: 'C', priority: 4 });
+    const issueB = makeIssue('B', { parentId: 'A', priority: 4 });
+    const issueC = makeIssue('C', { parentId: 'B', priority: 4 });
+    const allIssues = [issueA, issueB, issueC];
+    // All P4, should not expand (and should not infinite loop)
+    expect(shouldAutoExpandInRecent(issueA, allIssues)).toBe(false);
+  });
+
+  it('handles undefined priority as backlog (no expand)', () => {
+    const parent = makeIssue('parent', {});
+    const child = makeIssue('child', { parentId: 'parent' });
+    // @ts-expect-error - testing undefined priority
+    child.priority = undefined;
+    const allIssues = [parent, child];
+    expect(shouldAutoExpandInRecent(parent, allIssues)).toBe(false);
+  });
+
+  it('handles NaN priority as backlog (no expand)', () => {
+    const parent = makeIssue('parent', {});
+    const child = makeIssue('child', { parentId: 'parent' });
+    child.priority = Number.NaN;
+    const allIssues = [parent, child];
+    expect(shouldAutoExpandInRecent(parent, allIssues)).toBe(false);
+  });
+
+  it('handles Infinity priority as backlog (no expand)', () => {
+    const parent = makeIssue('parent', {});
+    const child = makeIssue('child', { parentId: 'parent' });
+    child.priority = Number.POSITIVE_INFINITY;
+    const allIssues = [parent, child];
+    expect(shouldAutoExpandInRecent(parent, allIssues)).toBe(false);
+  });
+
+  it('still expands for in_progress even with invalid priority', () => {
+    const parent = makeIssue('parent', {});
+    const child = makeIssue('child', { parentId: 'parent', status: 'in_progress' });
+    // @ts-expect-error - testing undefined priority
+    child.priority = undefined;
+    const allIssues = [parent, child];
+    // in_progress always qualifies, regardless of priority
+    expect(shouldAutoExpandInRecent(parent, allIssues)).toBe(true);
+  });
 });

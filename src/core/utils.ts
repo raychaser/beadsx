@@ -171,6 +171,14 @@ export function truncateTitle(title: string, maxWidth: number): string {
 export const RECENT_VIEW_PRIORITY_THRESHOLD = 4;
 
 /**
+ * Checks if a priority value is valid (a finite number).
+ * Invalid priorities (undefined, NaN, Infinity) are treated as backlog.
+ */
+function isValidPriority(priority: unknown): priority is number {
+  return typeof priority === 'number' && Number.isFinite(priority);
+}
+
+/**
  * Determines whether a tree node should be auto-expanded in Recent view.
  *
  * For the Recent view, we want to auto-expand nodes that contain "important" work:
@@ -180,11 +188,26 @@ export const RECENT_VIEW_PRIORITY_THRESHOLD = 4;
  * Nodes whose subtrees only contain P4+ (backlog) open issues that aren't in_progress
  * are collapsed by default to reduce visual noise.
  *
+ * Handles circular parent references by tracking visited nodes to prevent infinite recursion.
+ *
  * @param issue - The issue (tree node) to check for auto-expansion
  * @param allIssues - All issues in the current view (needed to find children)
+ * @param visited - Internal: Set of already-visited issue IDs for cycle detection
  * @returns true if the node should be auto-expanded, false otherwise
  */
-export function shouldAutoExpandInRecent(issue: BeadsIssue, allIssues: BeadsIssue[]): boolean {
+export function shouldAutoExpandInRecent(
+  issue: BeadsIssue,
+  allIssues: BeadsIssue[],
+  visited: Set<string> = new Set(),
+): boolean {
+  // Cycle detection: if we've already visited this node, break the cycle
+  if (visited.has(issue.id)) {
+    return false;
+  }
+
+  // Mark this node as visited
+  visited.add(issue.id);
+
   // Get direct children of this issue
   const children = allIssues.filter((i) => i.parentId === issue.id);
 
@@ -194,11 +217,16 @@ export function shouldAutoExpandInRecent(issue: BeadsIssue, allIssues: BeadsIssu
     if (child.status === 'in_progress') {
       return true;
     }
-    // Non-closed issues with important priority qualify
-    if (child.status !== 'closed' && child.priority < RECENT_VIEW_PRIORITY_THRESHOLD) {
+    // Non-closed issues with valid important priority qualify
+    // Invalid priorities are treated as backlog (don't expand)
+    if (
+      child.status !== 'closed' &&
+      isValidPriority(child.priority) &&
+      child.priority < RECENT_VIEW_PRIORITY_THRESHOLD
+    ) {
       return true;
     }
-    // Recurse into child's subtree
-    return shouldAutoExpandInRecent(child, allIssues);
+    // Recurse into child's subtree (passing visited set for cycle detection)
+    return shouldAutoExpandInRecent(child, allIssues, visited);
   });
 }
