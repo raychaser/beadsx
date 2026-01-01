@@ -103,10 +103,10 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
 
           // Find all ancestors of new issues (with cycle detection)
           const ancestorsOfNewIssues = new Set<string>();
-          for (const id of newIssueIds) {
-            const issue = issueMap.get(id);
+          for (const newIssueId of newIssueIds) {
+            const issue = issueMap.get(newIssueId);
             if (issue?.parentId) {
-              const visited = new Set<string>(); // Prevent infinite loops from circular deps
+              const visited = new Set<string>(); // Prevent infinite loops from circular parent references
               let parentId: string | undefined = issue.parentId;
               while (parentId && !visited.has(parentId)) {
                 visited.add(parentId);
@@ -114,17 +114,21 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
                 const parent = issueMap.get(parentId);
                 parentId = parent?.parentId;
               }
+              // Warn if cycle was detected (data corruption indicator)
+              if (parentId && visited.has(parentId)) {
+                console.warn(
+                  `[warning] Circular parent reference detected for issue "${newIssueId}". ` +
+                    `This may indicate data corruption in .beads/issues.jsonl.`,
+                );
+              }
             }
           }
 
+          // Expand new issues and their ancestors if they meet expansion criteria
           for (const issue of loaded) {
-            // Expand new issues that have children meeting criteria
-            if (newIssueIds.has(issue.id) && shouldExpandIssue(issue)) {
-              newToExpand.push(issue.id);
-            }
-            // Also expand existing parents of new issues if they now meet criteria
-            // This ensures new children become visible even if parent already existed
-            else if (ancestorsOfNewIssues.has(issue.id) && shouldExpandIssue(issue)) {
+            const isNewOrAncestorOfNew =
+              newIssueIds.has(issue.id) || ancestorsOfNewIssues.has(issue.id);
+            if (isNewOrAncestorOfNew && shouldExpandIssue(issue)) {
               newToExpand.push(issue.id);
             }
           }
