@@ -93,17 +93,41 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
         }
         setExpandedIds(toExpand);
       } else {
-        // Refresh: only expand newly-discovered issues (preserve user toggles for existing)
+        // Refresh: expand newly-discovered issues AND their parents
         const newIssueIds = new Set([...currentIds].filter((id) => !previousIds.has(id)));
         if (newIssueIds.size > 0) {
           const newToExpand: string[] = [];
+
+          // Build a map for quick parent lookup
+          const issueMap = new Map(loaded.map((i) => [i.id, i]));
+
+          // Find all ancestors of new issues
+          const ancestorsOfNewIssues = new Set<string>();
+          for (const id of newIssueIds) {
+            const issue = issueMap.get(id);
+            if (issue?.parentId) {
+              let parentId: string | undefined = issue.parentId;
+              while (parentId) {
+                ancestorsOfNewIssues.add(parentId);
+                const parent = issueMap.get(parentId);
+                parentId = parent?.parentId;
+              }
+            }
+          }
+
           for (const issue of loaded) {
-            // Only consider new issues for auto-expansion
+            // Expand new issues that have children meeting criteria
             if (newIssueIds.has(issue.id) && shouldExpandIssue(issue)) {
               newToExpand.push(issue.id);
             }
+            // Also expand existing parents of new issues if they now meet criteria
+            // This ensures new children become visible even if parent already existed
+            else if (ancestorsOfNewIssues.has(issue.id) && shouldExpandIssue(issue)) {
+              newToExpand.push(issue.id);
+            }
           }
-          // Merge with existing expanded IDs (additive only, preserves user collapses)
+
+          // Merge with existing expanded IDs (additive only)
           if (newToExpand.length > 0) {
             setExpandedIds((prev) => {
               const next = new Set(prev);
