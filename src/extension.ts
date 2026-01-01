@@ -1,3 +1,4 @@
+import * as crypto from 'node:crypto';
 import * as vscode from 'vscode';
 
 import {
@@ -31,7 +32,13 @@ const formatDetailDate = (dateStr: string) => {
   }
 };
 
+// Generate a cryptographic nonce for CSP
+function generateNonce(): string {
+  return crypto.randomBytes(16).toString('base64');
+}
+
 function getDetailHtml(issue: BeadsIssue, ancestors: BeadsIssue[], children: BeadsIssue[]): string {
+  const nonce = generateNonce();
   // Build breadcrumbs HTML
   const breadcrumbsHtml =
     ancestors.length > 0
@@ -81,9 +88,9 @@ function getDetailHtml(issue: BeadsIssue, ancestors: BeadsIssue[], children: Bea
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';" />
   <title>${escapeHtml(issue.id)}</title>
-  <style>
+  <style nonce="${nonce}">
     body {
       font-family: var(--vscode-font-family);
       padding: 20px;
@@ -324,7 +331,7 @@ function getDetailHtml(issue: BeadsIssue, ancestors: BeadsIssue[], children: Bea
       : ''
   }
   ${childrenHtml}
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     document.querySelectorAll('.breadcrumb-item').forEach(item => {
       item.addEventListener('click', () => {
