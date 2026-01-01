@@ -93,17 +93,47 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
         }
         setExpandedIds(toExpand);
       } else {
-        // Refresh: only expand newly-discovered issues (preserve user toggles for existing)
+        // Refresh: expand newly-discovered issues AND their parents
         const newIssueIds = new Set([...currentIds].filter((id) => !previousIds.has(id)));
         if (newIssueIds.size > 0) {
           const newToExpand: string[] = [];
+
+          // Build a map for quick parent lookup
+          const issueMap = new Map(loaded.map((i) => [i.id, i]));
+
+          // Find all ancestors of new issues (with cycle detection)
+          const ancestorsOfNewIssues = new Set<string>();
+          for (const newIssueId of newIssueIds) {
+            const issue = issueMap.get(newIssueId);
+            if (issue?.parentId) {
+              const visited = new Set<string>(); // Prevent infinite loops from circular parent references
+              let parentId: string | undefined = issue.parentId;
+              while (parentId && !visited.has(parentId)) {
+                visited.add(parentId);
+                ancestorsOfNewIssues.add(parentId);
+                const parent = issueMap.get(parentId);
+                parentId = parent?.parentId;
+              }
+              // Warn if cycle was detected (data corruption indicator)
+              if (parentId && visited.has(parentId)) {
+                console.warn(
+                  `[warning] Circular parent reference detected for issue "${newIssueId}". ` +
+                    `This may indicate data corruption in .beads/issues.jsonl.`,
+                );
+              }
+            }
+          }
+
+          // Expand new issues and their ancestors if they meet expansion criteria
           for (const issue of loaded) {
-            // Only consider new issues for auto-expansion
-            if (newIssueIds.has(issue.id) && shouldExpandIssue(issue)) {
+            const isNewOrAncestorOfNew =
+              newIssueIds.has(issue.id) || ancestorsOfNewIssues.has(issue.id);
+            if (isNewOrAncestorOfNew && shouldExpandIssue(issue)) {
               newToExpand.push(issue.id);
             }
           }
-          // Merge with existing expanded IDs (additive only, preserves user collapses)
+
+          // Merge with existing expanded IDs (additive only)
           if (newToExpand.length > 0) {
             setExpandedIds((prev) => {
               const next = new Set(prev);
