@@ -1,3 +1,4 @@
+import * as crypto from 'node:crypto';
 import * as vscode from 'vscode';
 
 import {
@@ -26,12 +27,45 @@ const escapeHtml = (str: string) =>
 const formatDetailDate = (dateStr: string) => {
   try {
     return new Date(dateStr).toLocaleString();
-  } catch {
+  } catch (error) {
+    // Log for debugging - date formatting failures are not critical but worth tracking
+    console.warn(`[BeadsX] Failed to format date "${dateStr}": ${error}`);
     return dateStr;
   }
 };
 
+// Generate a cryptographic nonce for CSP to enable inline styles/scripts without 'unsafe-inline'
+function generateNonce(): string {
+  try {
+    return crypto.randomBytes(16).toString('base64');
+  } catch (error) {
+    // crypto.randomBytes can fail on entropy exhaustion or system issues (rare but possible)
+    // Rethrow with context so callers can handle appropriately
+    throw new Error(
+      `Failed to generate secure nonce: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+// Generate error page HTML for webview failures
+function getErrorHtml(issueId: string, errorMessage: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';" />
+</head>
+<body style="font-family: var(--vscode-font-family); padding: 20px; color: var(--vscode-foreground); background-color: var(--vscode-editor-background);">
+  <h1>Error Loading Issue</h1>
+  <p>Failed to render details for issue <strong>${escapeHtml(issueId)}</strong>.</p>
+  <p style="color: var(--vscode-errorForeground);">Error: ${escapeHtml(errorMessage)}</p>
+  <p>Please check the BeadsX output channel for more details.</p>
+</body>
+</html>`;
+}
+
 function getDetailHtml(issue: BeadsIssue, ancestors: BeadsIssue[], children: BeadsIssue[]): string {
+  const nonce = generateNonce();
   // Build breadcrumbs HTML
   const breadcrumbsHtml =
     ancestors.length > 0
@@ -81,9 +115,9 @@ function getDetailHtml(issue: BeadsIssue, ancestors: BeadsIssue[], children: Bea
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';" />
   <title>${escapeHtml(issue.id)}</title>
-  <style>
+  <style nonce="${nonce}">
     body {
       font-family: var(--vscode-font-family);
       padding: 20px;
@@ -324,7 +358,7 @@ function getDetailHtml(issue: BeadsIssue, ancestors: BeadsIssue[], children: Bea
       : ''
   }
   ${childrenHtml}
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     document.querySelectorAll('.breadcrumb-item').forEach(item => {
       item.addEventListener('click', () => {
@@ -416,7 +450,19 @@ export function activate(context: vscode.ExtensionContext) {
           },
         );
 
-        panel.webview.html = getDetailHtml(issue, ancestors, children);
+        try {
+          panel.webview.html = getDetailHtml(issue, ancestors, children);
+          outputChannel.appendLine(`Opened detail panel for ${issue.id}`);
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          outputChannel.appendLine(
+            `ERROR: Failed to render detail panel for ${issue.id}: ${errorMessage}`,
+          );
+          vscode.window.showErrorMessage(
+            `Failed to render issue details. Check the BeadsX output channel for details.`,
+          );
+          panel.webview.html = getErrorHtml(issue.id, errorMessage);
+        }
 
         // Handle breadcrumb and child navigation
         const messageDisposable = panel.webview.onDidReceiveMessage((message) => {
@@ -438,8 +484,19 @@ export function activate(context: vscode.ExtensionContext) {
               const newAncestors = getAllAncestors(targetIssue, currentIssues);
               const newChildren = getChildren(targetIssue, currentIssues);
               panel.title = `Issue: ${targetIssue.id}`;
-              panel.webview.html = getDetailHtml(targetIssue, newAncestors, newChildren);
-              outputChannel.appendLine(`Navigated to ${targetIssue.id}`);
+              try {
+                panel.webview.html = getDetailHtml(targetIssue, newAncestors, newChildren);
+                outputChannel.appendLine(`Navigated to ${targetIssue.id}`);
+              } catch (error) {
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                outputChannel.appendLine(
+                  `ERROR: Failed to navigate to ${targetIssue.id}: ${errorMessage}`,
+                );
+                vscode.window.showErrorMessage(
+                  `Failed to load issue ${targetIssue.id}. Check the BeadsX output channel for details.`,
+                );
+                panel.webview.html = getErrorHtml(targetIssue.id, errorMessage);
+              }
             } else {
               // User feedback for failed navigation
               outputChannel.appendLine(
@@ -458,8 +515,6 @@ export function activate(context: vscode.ExtensionContext) {
         panel.onDidDispose(() => {
           messageDisposable.dispose();
         });
-
-        outputChannel.appendLine(`Opened detail panel for ${issue.id}`);
       }
     },
   );
