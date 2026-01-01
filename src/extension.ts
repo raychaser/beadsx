@@ -50,10 +50,10 @@ function generateNonce(): string {
 // Generate error page HTML for webview failures
 function getErrorHtml(issueId: string, errorMessage: string): string {
   return `<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';" />
 </head>
 <body style="font-family: var(--vscode-font-family); padding: 20px; color: var(--vscode-foreground); background-color: var(--vscode-editor-background);">
   <h1>Error Loading Issue</h1>
@@ -452,6 +452,7 @@ export function activate(context: vscode.ExtensionContext) {
 
         try {
           panel.webview.html = getDetailHtml(issue, ancestors, children);
+          outputChannel.appendLine(`Opened detail panel for ${issue.id}`);
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
           outputChannel.appendLine(
@@ -514,8 +515,6 @@ export function activate(context: vscode.ExtensionContext) {
         panel.onDidDispose(() => {
           messageDisposable.dispose();
         });
-
-        outputChannel.appendLine(`Opened detail panel for ${issue.id}`);
       }
     },
   );
