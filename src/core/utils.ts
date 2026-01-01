@@ -162,3 +162,43 @@ export function truncateTitle(title: string, maxWidth: number): string {
   if (maxWidth === 1) return '\u2026'; // Only room for ellipsis
   return `${title.slice(0, maxWidth - 1)}\u2026`;
 }
+
+/**
+ * Priority threshold for "important" issues in Recent view auto-expansion.
+ * Issues with priority < this value (P0-P3) are considered important.
+ * Issues with priority >= this value (P4+) are considered backlog/low-priority.
+ */
+export const RECENT_VIEW_PRIORITY_THRESHOLD = 4;
+
+/**
+ * Determines whether a tree node should be auto-expanded in Recent view.
+ *
+ * For the Recent view, we want to auto-expand nodes that contain "important" work:
+ * - Issues that are `in_progress` (actively being worked on)
+ * - Non-closed issues with priority < 4 (P0-P3)
+ *
+ * Nodes whose subtrees only contain P4+ (backlog) open issues that aren't in_progress
+ * are collapsed by default to reduce visual noise.
+ *
+ * @param issue - The issue (tree node) to check for auto-expansion
+ * @param allIssues - All issues in the current view (needed to find children)
+ * @returns true if the node should be auto-expanded, false otherwise
+ */
+export function shouldAutoExpandInRecent(issue: BeadsIssue, allIssues: BeadsIssue[]): boolean {
+  // Get direct children of this issue
+  const children = allIssues.filter((i) => i.parentId === issue.id);
+
+  // Check if any child (or its descendants) qualifies for expansion
+  return children.some((child) => {
+    // In-progress issues always qualify (actively being worked on)
+    if (child.status === 'in_progress') {
+      return true;
+    }
+    // Non-closed issues with important priority qualify
+    if (child.status !== 'closed' && child.priority < RECENT_VIEW_PRIORITY_THRESHOLD) {
+      return true;
+    }
+    // Recurse into child's subtree
+    return shouldAutoExpandInRecent(child, allIssues);
+  });
+}

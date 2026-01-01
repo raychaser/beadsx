@@ -126,7 +126,7 @@
     "prepare": "husky",
     "cli:dev": "bun run src/cli/index.tsx",
     "cli:build": "bun build --compile src/cli/index.tsx --outfile dist/bdx",
-    "cli:install": "pnpm run cli:build && cp dist/bdx /usr/local/bin/bdx && echo 'Installed bdx to /usr/local/bin/bdx'",
+    "cli:install": "pnpm run cli:build && cp dist/bdx /usr/local/bin/bdx && codesign --force --sign - /usr/local/bin/bdx && echo 'Installed bdx to /usr/local/bin/bdx'",
     "cli:build:all": "mkdir -p dist && bun build --compile src/cli/index.tsx --outfile dist/bdx-darwin-arm64 --target bun-darwin-arm64 && bun build --compile src/cli/index.tsx --outfile dist/bdx-darwin-x64 --target bun-darwin-x64 && bun build --compile src/cli/index.tsx --outfile dist/bdx-linux-x64 --target bun-linux-x64 && bun build --compile src/cli/index.tsx --outfile dist/bdx-linux-arm64 --target bun-linux-arm64 && bun build --compile src/cli/index.tsx --outfile dist/bdx-windows-x64.exe --target bun-windows-x64",
     "sign:macos": "node scripts/sign-macos.mjs",
     "sign:macos:local": "node scripts/sign-macos.mjs --skip-notarize"

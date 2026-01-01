@@ -9,6 +9,7 @@ import {
   type SortMode,
   getRootIssues,
   listFilteredIssues,
+  shouldAutoExpandInRecent,
   sortIssues,
 } from '../core';
 import { DetailView, getSelectableChildrenCount, getSelectedChild } from './components/DetailView';
@@ -62,13 +63,21 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
       setIssues(loaded);
       setLastRefresh(new Date());
 
-      // Auto-expand open/in_progress issues on first load
+      // Auto-expand issues on first load based on filter mode
       if (loading) {
         const toExpand = new Set<string>();
         for (const issue of loaded) {
-          if (issue.status !== 'closed') {
-            const hasChildren = loaded.some((i) => i.parentId === issue.id);
-            if (hasChildren) {
+          const hasChildren = loaded.some((i) => i.parentId === issue.id);
+          if (!hasChildren) continue;
+
+          if (filter === 'recent') {
+            // For Recent view: expand if issue is in_progress OR subtree contains important work
+            if (issue.status === 'in_progress' || shouldAutoExpandInRecent(issue, loaded)) {
+              toExpand.add(issue.id);
+            }
+          } else {
+            // For other views: expand all non-closed issues with children
+            if (issue.status !== 'closed') {
               toExpand.add(issue.id);
             }
           }

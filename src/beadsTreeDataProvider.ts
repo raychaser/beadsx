@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { BeadsIssue, type FilterMode, listFilteredIssuesWithConfig } from './beadsService';
-import { formatTimeAgo, type SortMode, sortIssues } from './utils';
+import { formatTimeAgo, type SortMode, shouldAutoExpandInRecent, sortIssues } from './utils';
 
 export { BeadsIssue };
 
@@ -98,17 +98,27 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     return names[this.filterMode];
   }
 
-  // Get issues that should be auto-expanded (open/in_progress with children)
+  // Get issues that should be auto-expanded based on current filter mode
   getExpandableIssues(): BeadsIssue[] {
     if (!this.cachedConfig.autoExpandOpen) {
       return [];
     }
 
-    // Find issues that are open/in_progress and have children
+    // Find issues that should be expanded based on filter mode
     return this.issuesCache.filter((issue) => {
       const isOpen = issue.status !== 'closed';
       const hasChildren = this.issuesCache.some((child) => child.parentId === issue.id);
-      return isOpen && hasChildren;
+
+      if (!hasChildren) return false;
+      if (!isOpen) return false;
+
+      if (this.filterMode === 'recent') {
+        // Recent view: expand if issue is in_progress OR subtree contains important work
+        return issue.status === 'in_progress' || shouldAutoExpandInRecent(issue, this.issuesCache);
+      }
+
+      // Other views: expand all non-closed issues
+      return true;
     });
   }
 
@@ -160,15 +170,25 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     // Use cached config for auto-expand setting
     const { autoExpandOpen, shortIds } = this.cachedConfig;
 
-    // Start expanded if issue is open/in_progress and autoExpand is enabled, collapsed if closed
+    // Determine collapsible state based on filter mode and issue status
     let collapsibleState = vscode.TreeItemCollapsibleState.None;
     if (hasChildIssues) {
       if (element.status === 'closed') {
+        // Closed issues: always start collapsed
         collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
-      } else if (autoExpandOpen) {
-        collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
+      } else if (!autoExpandOpen) {
+        // Auto-expand disabled: collapse all
+        collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
+      } else if (this.filterMode === 'recent') {
+        // Recent view: expand if issue is in_progress OR subtree contains important work
+        const shouldExpand =
+          element.status === 'in_progress' || shouldAutoExpandInRecent(element, this.issuesCache);
+        collapsibleState = shouldExpand
+          ? vscode.TreeItemCollapsibleState.Expanded
+          : vscode.TreeItemCollapsibleState.Collapsed;
       } else {
-        collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
+        // Other views: expand all non-closed issues
+        collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
       }
     }
 

@@ -7,6 +7,8 @@ export {
   formatTimeAgo,
   MAX_RECENT_WINDOW_MINUTES,
   MIN_RECENT_WINDOW_MINUTES,
+  RECENT_VIEW_PRIORITY_THRESHOLD,
+  shouldAutoExpandInRecent,
   sortIssues,
   truncateTitle,
   validateRecentWindowMinutes,
