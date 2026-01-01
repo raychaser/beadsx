@@ -101,13 +101,15 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
           // Build a map for quick parent lookup
           const issueMap = new Map(loaded.map((i) => [i.id, i]));
 
-          // Find all ancestors of new issues
+          // Find all ancestors of new issues (with cycle detection)
           const ancestorsOfNewIssues = new Set<string>();
           for (const id of newIssueIds) {
             const issue = issueMap.get(id);
             if (issue?.parentId) {
+              const visited = new Set<string>(); // Prevent infinite loops from circular deps
               let parentId: string | undefined = issue.parentId;
-              while (parentId) {
+              while (parentId && !visited.has(parentId)) {
+                visited.add(parentId);
                 ancestorsOfNewIssues.add(parentId);
                 const parent = issueMap.get(parentId);
                 parentId = parent?.parentId;
