@@ -41,6 +41,10 @@ export function configure(
   newLogger?: Logger,
   notify?: (message: string, type: 'info' | 'warn' | 'error') => void,
 ): void {
+  // Clear bd path cache if commandPath changed
+  if (config.commandPath !== newConfig.commandPath) {
+    cachedBdPath = null;
+  }
   config = newConfig;
   if (newLogger) {
     logger = newLogger;
@@ -141,10 +145,6 @@ async function findBdExecutable(): Promise<string> {
 
   // Try the command as-is first (PATH lookup)
   try {
-    const { execFile } = await import('node:child_process');
-    const { promisify } = await import('node:util');
-    const execFileAsync = promisify(execFile);
-
     await execFileAsync(cmd, ['--version'], { timeout: 5000 });
     return cmd; // PATH lookup worked
   } catch {
@@ -152,8 +152,8 @@ async function findBdExecutable(): Promise<string> {
     log('bd not found in PATH, checking common installation paths...');
   }
 
-  // Check fallback paths
-  const { access, constants } = await import('node:fs/promises');
+  // Check fallback paths using fs constants for executable check
+  const { constants } = await import('node:fs/promises');
   for (const fallbackPath of BD_FALLBACK_PATHS) {
     try {
       await access(fallbackPath, constants.X_OK);
@@ -171,6 +171,13 @@ async function findBdExecutable(): Promise<string> {
 
 // Cache the resolved bd path to avoid repeated lookups
 let cachedBdPath: string | null = null;
+
+/**
+ * Clear the cached bd path (useful when config changes or after ENOENT errors)
+ */
+export function clearBdPathCache(): void {
+  cachedBdPath = null;
+}
 
 async function getResolvedBdCommand(): Promise<string> {
   if (cachedBdPath === null) {
@@ -222,9 +229,18 @@ export async function listReadyIssues(workspaceRoot: string): Promise<BeadsResul
     if (error instanceof Error && error.message.includes('maxBuffer')) {
       errorMsg = 'Too many ready issues. Please filter or compact old issues.';
     } else if (error instanceof Error && error.message.includes('ENOENT')) {
-      errorMsg = `Failed to execute 'bd' command. Is it installed and in your PATH?`;
+      errorMsg = `bd command not found. Is it installed and in your PATH?`;
+    } else if (error instanceof Error && error.message.includes('ETIMEDOUT')) {
+      errorMsg = `bd command timed out. Check if the database is locked or inaccessible.`;
+    } else if (
+      error instanceof Error &&
+      'code' in error &&
+      (error as { code: string }).code === 'EACCES'
+    ) {
+      errorMsg = `Cannot execute bd command: permission denied. Check file permissions.`;
     } else {
-      errorMsg = `Failed to execute 'bd' command. Is it installed and in your PATH?`;
+      const errDetail = error instanceof Error ? error.message : String(error);
+      errorMsg = `bd command failed: ${errDetail}`;
     }
     log(`Error: Failed to execute 'bd ready': ${error}`);
     warn(errorMsg);
@@ -292,9 +308,18 @@ export async function exportIssuesWithDeps(
     if (error instanceof Error && error.message.includes('maxBuffer')) {
       errorMsg = 'Issue database too large. Please compact old issues with "bd compact".';
     } else if (error instanceof Error && error.message.includes('ENOENT')) {
-      errorMsg = `Failed to execute 'bd' command. Is it installed and in your PATH?`;
+      errorMsg = `bd command not found. Is it installed and in your PATH?`;
+    } else if (error instanceof Error && error.message.includes('ETIMEDOUT')) {
+      errorMsg = `bd command timed out. Check if the database is locked or inaccessible.`;
+    } else if (
+      error instanceof Error &&
+      'code' in error &&
+      (error as { code: string }).code === 'EACCES'
+    ) {
+      errorMsg = `Cannot execute bd command: permission denied. Check file permissions.`;
     } else {
-      errorMsg = `Failed to execute 'bd' command. Is it installed and in your PATH?`;
+      const errDetail = error instanceof Error ? error.message : String(error);
+      errorMsg = `bd command failed: ${errDetail}`;
     }
     log(`Error: Failed to execute 'bd export': ${error}`);
     warn(errorMsg);
