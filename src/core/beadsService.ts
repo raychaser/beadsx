@@ -41,6 +41,10 @@ export function configure(
   newLogger?: Logger,
   notify?: (message: string, type: 'info' | 'warn' | 'error') => void,
 ): void {
+  // Clear bd path cache if commandPath changed
+  if (config.commandPath !== newConfig.commandPath) {
+    cachedBdPath = null;
+  }
   config = newConfig;
   if (newLogger) {
     logger = newLogger;
@@ -104,8 +108,16 @@ export function clearBeadsInitializedCache(): void {
   beadsInitializedCache.clear();
 }
 
+// Common bd installation paths to check if PATH lookup fails
+const BD_FALLBACK_PATHS = [
+  '/opt/homebrew/bin/bd', // macOS ARM (Apple Silicon)
+  '/usr/local/bin/bd', // macOS/Linux
+  '/usr/bin/bd', // Linux system install
+];
+
 function getBdCommand(): string {
-  const customPath = config.commandPath;
+  // Priority: config.commandPath > BD_PATH env var > 'bd' (PATH lookup)
+  const customPath = config.commandPath || process.env.BD_PATH;
 
   if (customPath) {
     // Validate against shell metacharacters and injection vectors
@@ -117,6 +129,61 @@ function getBdCommand(): string {
     return customPath;
   }
   return 'bd';
+}
+
+/**
+ * Try common installation paths if bd is not found in PATH.
+ * This helps with compiled binaries that may have restricted PATH.
+ */
+async function findBdExecutable(): Promise<string> {
+  const cmd = getBdCommand();
+
+  // If it's already an absolute path, use it directly
+  if (cmd.startsWith('/')) {
+    return cmd;
+  }
+
+  // Try the command as-is first (PATH lookup)
+  try {
+    await execFileAsync(cmd, ['--version'], { timeout: 5000 });
+    return cmd; // PATH lookup worked
+  } catch {
+    // PATH lookup failed, try fallback paths
+    log('bd not found in PATH, checking common installation paths...');
+  }
+
+  // Check fallback paths using fs constants for executable check
+  const { constants } = await import('node:fs/promises');
+  for (const fallbackPath of BD_FALLBACK_PATHS) {
+    try {
+      await access(fallbackPath, constants.X_OK);
+      log(`Found bd at fallback path: ${fallbackPath}`);
+      return fallbackPath;
+    } catch {
+      // Path doesn't exist or isn't executable, try next
+    }
+  }
+
+  // No fallback found, return original (will fail with helpful error)
+  log('bd not found in fallback paths, using original command');
+  return cmd;
+}
+
+// Cache the resolved bd path to avoid repeated lookups
+let cachedBdPath: string | null = null;
+
+/**
+ * Clear the cached bd path (useful when config changes or after ENOENT errors)
+ */
+export function clearBdPathCache(): void {
+  cachedBdPath = null;
+}
+
+async function getResolvedBdCommand(): Promise<string> {
+  if (cachedBdPath === null) {
+    cachedBdPath = await findBdExecutable();
+  }
+  return cachedBdPath;
 }
 
 /**
@@ -142,7 +209,7 @@ export async function listReadyIssues(workspaceRoot: string): Promise<BeadsResul
     return { success: true, data: [] };
   }
 
-  const bdCmd = getBdCommand();
+  const bdCmd = await getResolvedBdCommand();
 
   // Execute bd command - separate try/catch for accurate error messaging
   let stdout: string;
@@ -152,11 +219,29 @@ export async function listReadyIssues(workspaceRoot: string): Promise<BeadsResul
     const result = await execFileAsync(bdCmd, cmdArgs, {
       cwd: workspaceRoot,
       timeout: 30000, // 30 second timeout to prevent hanging
+      maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large ready lists
     });
     stdout = result.stdout;
     stderr = result.stderr;
   } catch (error) {
-    const errorMsg = `Failed to execute 'bd' command. Is it installed and in your PATH?`;
+    // Provide more specific error messages based on error type
+    let errorMsg: string;
+    if (error instanceof Error && error.message.includes('maxBuffer')) {
+      errorMsg = 'Too many ready issues. Please filter or compact old issues.';
+    } else if (error instanceof Error && error.message.includes('ENOENT')) {
+      errorMsg = `bd command not found. Is it installed and in your PATH?`;
+    } else if (error instanceof Error && error.message.includes('ETIMEDOUT')) {
+      errorMsg = `bd command timed out. Check if the database is locked or inaccessible.`;
+    } else if (
+      error instanceof Error &&
+      'code' in error &&
+      (error as { code: string }).code === 'EACCES'
+    ) {
+      errorMsg = `Cannot execute bd command: permission denied. Check file permissions.`;
+    } else {
+      const errDetail = error instanceof Error ? error.message : String(error);
+      errorMsg = `bd command failed: ${errDetail}`;
+    }
     log(`Error: Failed to execute 'bd ready': ${error}`);
     warn(errorMsg);
     return { success: false, data: [], error: errorMsg };
@@ -202,7 +287,7 @@ export async function exportIssuesWithDeps(
     return { success: true, data: [] };
   }
 
-  const bdCmd = getBdCommand();
+  const bdCmd = await getResolvedBdCommand();
   log(`exportIssuesWithDeps called with workspaceRoot: ${workspaceRoot}, bdCmd: ${bdCmd}`);
 
   // Execute bd command - separate try/catch for accurate error messaging
@@ -213,11 +298,29 @@ export async function exportIssuesWithDeps(
     const result = await execFileAsync(bdCmd, cmdArgs, {
       cwd: workspaceRoot,
       timeout: 30000, // 30 second timeout to prevent hanging
+      maxBuffer: 50 * 1024 * 1024, // 50MB buffer for large issue databases
     });
     stdout = result.stdout;
     stderr = result.stderr;
   } catch (error) {
-    const errorMsg = `Failed to execute 'bd' command. Is it installed and in your PATH?`;
+    // Provide more specific error messages based on error type
+    let errorMsg: string;
+    if (error instanceof Error && error.message.includes('maxBuffer')) {
+      errorMsg = 'Issue database too large. Please compact old issues with "bd compact".';
+    } else if (error instanceof Error && error.message.includes('ENOENT')) {
+      errorMsg = `bd command not found. Is it installed and in your PATH?`;
+    } else if (error instanceof Error && error.message.includes('ETIMEDOUT')) {
+      errorMsg = `bd command timed out. Check if the database is locked or inaccessible.`;
+    } else if (
+      error instanceof Error &&
+      'code' in error &&
+      (error as { code: string }).code === 'EACCES'
+    ) {
+      errorMsg = `Cannot execute bd command: permission denied. Check file permissions.`;
+    } else {
+      const errDetail = error instanceof Error ? error.message : String(error);
+      errorMsg = `bd command failed: ${errDetail}`;
+    }
     log(`Error: Failed to execute 'bd export': ${error}`);
     warn(errorMsg);
     return { success: false, data: [], error: errorMsg };
