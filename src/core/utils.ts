@@ -113,7 +113,10 @@ export function sortIssues<T extends SortableIssue>(issues: T[], mode: SortMode 
     }
 
     // Both open: sort by priority (0 first, then 1, 2, etc.)
-    return a.priority - b.priority;
+    // Treat NaN/invalid priorities as lowest priority (largest number)
+    const aPriority = Number.isFinite(a.priority) ? a.priority : Number.MAX_SAFE_INTEGER;
+    const bPriority = Number.isFinite(b.priority) ? b.priority : Number.MAX_SAFE_INTEGER;
+    return aPriority - bPriority;
   });
 }
 
@@ -219,7 +222,10 @@ export function sortChildrenForRecentView<T extends SortableIssue>(issues: T[]):
     if (aOpen && !bOpen) return -1;
     if (!aOpen && bOpen) return 1;
     // Same status group: sort by priority (lower = higher priority)
-    return a.priority - b.priority;
+    // Treat NaN/invalid priorities as lowest priority (largest number)
+    const aPriority = Number.isFinite(a.priority) ? a.priority : Number.MAX_SAFE_INTEGER;
+    const bPriority = Number.isFinite(b.priority) ? b.priority : Number.MAX_SAFE_INTEGER;
+    return aPriority - bPriority;
   });
 }
 

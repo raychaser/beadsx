@@ -361,6 +361,24 @@ describe('sortIssues', () => {
     expect(sorted.map((i) => i.id)).toEqual(['negative', 'zero', 'very-low']);
   });
 
+  it('treats NaN priority as lowest priority for open issues', () => {
+    const issues = [
+      makeIssue({ status: 'open', priority: NaN, id: 'nan' }),
+      makeIssue({ status: 'open', priority: 1, id: 'valid' }),
+    ];
+    const sorted = sortIssues(issues);
+    expect(sorted.map((i) => i.id)).toEqual(['valid', 'nan']);
+  });
+
+  it('treats Infinity priority as lowest priority for open issues', () => {
+    const issues = [
+      makeIssue({ status: 'open', priority: Infinity, id: 'inf' }),
+      makeIssue({ status: 'open', priority: 2, id: 'valid' }),
+    ];
+    const sorted = sortIssues(issues);
+    expect(sorted.map((i) => i.id)).toEqual(['valid', 'inf']);
+  });
+
   it('handles empty array', () => {
     const sorted = sortIssues([]);
     expect(sorted).toEqual([]);
@@ -873,6 +891,46 @@ describe('sortChildrenForRecentView', () => {
     const sorted = sortChildrenForRecentView(issues);
     expect(sorted.map((i) => i.id)).toEqual(['blocked', 'closed']);
   });
+
+  it('treats NaN priority as lowest priority', () => {
+    const issues = [
+      makeIssue({ id: 'nan', status: 'open', priority: NaN }),
+      makeIssue({ id: 'valid', status: 'open', priority: 1 }),
+    ];
+    const sorted = sortChildrenForRecentView(issues);
+    expect(sorted.map((i) => i.id)).toEqual(['valid', 'nan']);
+  });
+
+  it('treats Infinity priority as lowest priority', () => {
+    const issues = [
+      makeIssue({ id: 'inf', status: 'open', priority: Infinity }),
+      makeIssue({ id: 'valid', status: 'open', priority: 2 }),
+    ];
+    const sorted = sortChildrenForRecentView(issues);
+    expect(sorted.map((i) => i.id)).toEqual(['valid', 'inf']);
+  });
+
+  it('handles mixed invalid priorities correctly', () => {
+    const issues = [
+      makeIssue({ id: 'nan', status: 'open', priority: NaN }),
+      makeIssue({ id: 'p2', status: 'open', priority: 2 }),
+      makeIssue({ id: 'inf', status: 'open', priority: Infinity }),
+      makeIssue({ id: 'p1', status: 'open', priority: 1 }),
+    ];
+    const sorted = sortChildrenForRecentView(issues);
+    // Valid priorities first (by priority), then invalid priorities together
+    expect(sorted.map((i) => i.id)).toEqual(['p1', 'p2', 'nan', 'inf']);
+  });
+
+  it('maintains relative order for issues with same status and priority (stable sort)', () => {
+    const issues = [
+      makeIssue({ id: 'first', status: 'open', priority: 2 }),
+      makeIssue({ id: 'second', status: 'open', priority: 2 }),
+      makeIssue({ id: 'third', status: 'open', priority: 2 }),
+    ];
+    const sorted = sortChildrenForRecentView(issues);
+    expect(sorted.map((i) => i.id)).toEqual(['first', 'second', 'third']);
+  });
 });
 
 describe('sortRootIssuesForRecentView', () => {
@@ -996,5 +1054,16 @@ describe('sortRootIssuesForRecentView', () => {
     const sorted = sortRootIssuesForRecentView(issues);
     // Epics sorted by updated_at, not status
     expect(sorted.map((i) => i.id)).toEqual(['closed-epic', 'open-epic']);
+  });
+
+  it('maintains relative order for epics with same updated_at (stable sort)', () => {
+    const sameTime = '2025-01-15T00:00:00.000Z';
+    const issues = [
+      makeIssue({ id: 'epic1', issue_type: 'epic', updated_at: sameTime }),
+      makeIssue({ id: 'epic2', issue_type: 'epic', updated_at: sameTime }),
+      makeIssue({ id: 'epic3', issue_type: 'epic', updated_at: sameTime }),
+    ];
+    const sorted = sortRootIssuesForRecentView(issues);
+    expect(sorted.map((i) => i.id)).toEqual(['epic1', 'epic2', 'epic3']);
   });
 });

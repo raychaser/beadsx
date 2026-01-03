@@ -82,7 +82,7 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
         if (!hasChildren) return false;
 
         if (filter === 'recent') {
-          // For Recent view: expand if issue is in_progress OR subtree contains important work
+          // For Recent view: expand if issue is in_progress OR has any non-closed descendants
           return issue.status === 'in_progress' || shouldAutoExpandInRecent(issue, loaded);
         }
         // For other views: expand all non-closed issues with children
@@ -112,10 +112,16 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
 
         // Find user-collapsed parents that now have new non-closed children
         // These should be forcibly expanded (override user collapse)
+        // Also clean up IDs that no longer exist in the current issue set
         const toForceExpand: string[] = [];
         setUserCollapsedIds((prev) => {
           const next = new Set(prev);
           for (const collapsedId of prev) {
+            // Remove IDs that no longer exist (memory cleanup)
+            if (!currentIds.has(collapsedId)) {
+              next.delete(collapsedId);
+              continue;
+            }
             if (hasNonClosedChildren(collapsedId)) {
               // Check if any child is new
               const hasNewChild = loaded.some(
@@ -374,23 +380,27 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
       }
     }
 
-    // Filter shortcuts - reset selection and scroll on filter change
+    // Filter shortcuts - reset selection, scroll, and user collapse state on filter change
     else if (key === '1') {
       setFilter('all');
       setSelectedIndex(0);
       setScrollOffset(0);
+      setUserCollapsedIds(new Set());
     } else if (key === '2') {
       setFilter('open');
       setSelectedIndex(0);
       setScrollOffset(0);
+      setUserCollapsedIds(new Set());
     } else if (key === '3') {
       setFilter('ready');
       setSelectedIndex(0);
       setScrollOffset(0);
+      setUserCollapsedIds(new Set());
     } else if (key === '4') {
       setFilter('recent');
       setSelectedIndex(0);
       setScrollOffset(0);
+      setUserCollapsedIds(new Set());
     }
 
     // Refresh
