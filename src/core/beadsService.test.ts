@@ -35,17 +35,19 @@ function mockExecFileWithResponses(
       _file: string,
       _args: string[],
       _options: unknown,
-      callback: (error: Error | null, stdout: string, stderr: string) => void,
+      callback: (error: Error | null, result?: { stdout: string; stderr: string }) => void,
     ) => {
       const response = responses[execFileCallCount] || responses[responses.length - 1];
       execFileCallCount++;
 
       if (response instanceof Error) {
-        process.nextTick(() => callback(response, '', ''));
-        return { stdout: '', stderr: '' };
+        process.nextTick(() => callback(response));
+        return;
       }
-      process.nextTick(() => callback(null, response.stdout, response.stderr || ''));
-      return { stdout: response.stdout, stderr: response.stderr || '' };
+      // promisify expects callback(null, result) where result has stdout/stderr
+      process.nextTick(() =>
+        callback(null, { stdout: response.stdout, stderr: response.stderr || '' }),
+      );
     },
   );
 }
@@ -63,8 +65,6 @@ describe('exportIssuesWithDeps - tombstone filtering', () => {
 
   it('returns empty array when all issues are tombstones', async () => {
     // This test verifies the core tombstone filtering logic works
-    // Note: The bd path is cached after the --version check, subsequent tests
-    // in this describe block inherit that cached value
     const jsonlOutput = [
       '{"id":"issue-1","title":"Tombstone 1","status":"tombstone","priority":2,"issue_type":"task","created_at":"2025-01-01T00:00:00Z","updated_at":"2025-01-01T00:00:00Z"}',
       '{"id":"issue-2","title":"Tombstone 2","status":"tombstone","priority":2,"issue_type":"task","created_at":"2025-01-01T00:00:00Z","updated_at":"2025-01-01T00:00:00Z"}',
@@ -78,6 +78,34 @@ describe('exportIssuesWithDeps - tombstone filtering', () => {
     expect(result.data).toHaveLength(0);
     // Verify all tombstones were filtered out
     expect(result.data.some((i) => i.status === 'tombstone')).toBe(false);
+  });
+
+  it('filters tombstones while preserving active issues', async () => {
+    // This test verifies filtering works correctly with mixed issue statuses
+    const jsonlOutput = [
+      '{"id":"active-1","title":"Active Open Issue","status":"open","priority":2,"issue_type":"task","created_at":"2025-01-01T00:00:00Z","updated_at":"2025-01-01T00:00:00Z"}',
+      '{"id":"tombstone-1","title":"Deleted Issue","status":"tombstone","priority":2,"issue_type":"task","created_at":"2025-01-01T00:00:00Z","updated_at":"2025-01-01T00:00:00Z"}',
+      '{"id":"active-2","title":"Closed Issue","status":"closed","priority":2,"issue_type":"task","created_at":"2025-01-01T00:00:00Z","updated_at":"2025-01-01T00:00:00Z","closed_at":"2025-01-02T00:00:00Z"}',
+      '{"id":"tombstone-2","title":"Another Deleted","status":"tombstone","priority":2,"issue_type":"task","created_at":"2025-01-01T00:00:00Z","updated_at":"2025-01-01T00:00:00Z"}',
+      '{"id":"active-3","title":"In Progress Issue","status":"in_progress","priority":1,"issue_type":"bug","created_at":"2025-01-01T00:00:00Z","updated_at":"2025-01-01T00:00:00Z"}',
+    ].join('\n');
+
+    // beforeEach clears all caches, so we need both version check and export responses
+    mockExecFileWithResponses([{ stdout: 'bd version 1.0.0' }, { stdout: jsonlOutput }]);
+
+    const result = await exportIssuesWithDeps('/test/workspace');
+
+    expect(result.success).toBe(true);
+    // Should have 3 active issues, 2 tombstones filtered out
+    expect(result.data).toHaveLength(3);
+    // Verify no tombstones in result
+    expect(result.data.some((i) => i.status === 'tombstone')).toBe(false);
+    // Verify correct issues are present
+    expect(result.data.map((i) => i.id).sort()).toEqual(['active-1', 'active-2', 'active-3']);
+    // Verify statuses are preserved correctly
+    expect(result.data.find((i) => i.id === 'active-1')?.status).toBe('open');
+    expect(result.data.find((i) => i.id === 'active-2')?.status).toBe('closed');
+    expect(result.data.find((i) => i.id === 'active-3')?.status).toBe('in_progress');
   });
 });
 

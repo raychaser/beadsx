@@ -2,7 +2,7 @@
 // No VS Code dependencies - uses injected config and logger
 
 import { execFile } from 'node:child_process';
-import { access } from 'node:fs/promises';
+import { access, constants as fsConstants } from 'node:fs/promises';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
 import type {
@@ -19,6 +19,12 @@ const execFileAsync = promisify(execFile);
 
 // Cache for beads initialization status to avoid repeated fs checks
 const beadsInitializedCache = new Map<string, boolean>();
+
+// Cache the resolved bd path to avoid repeated lookups
+let cachedBdPath: string | null = null;
+
+// Pre-compiled regex for exit code extraction (avoids recompilation on each call)
+const EXIT_CODE_REGEX = /exit code (\d+)/i;
 
 // Module-level configuration and logger
 let config: BeadsConfig = {};
@@ -69,11 +75,19 @@ function warn(message: string): void {
 }
 
 /**
+ * Type for Node.js errors with a code property (ENOENT, EACCES, etc.)
+ */
+interface NodeJSError extends Error {
+  code: string;
+}
+
+/**
  * Type guard to check if an error has a specific error code.
  * Works with Node.js errors that have a 'code' property (ENOENT, EACCES, etc.).
+ * Returns true as a type guard, allowing TypeScript to narrow the error type.
  */
-function hasErrorCode(error: unknown, code: string): boolean {
-  return error instanceof Error && 'code' in error && (error as { code: string }).code === code;
+function hasErrorCode(error: unknown, code: string): error is NodeJSError {
+  return error instanceof Error && 'code' in error && (error as NodeJSError).code === code;
 }
 
 /**
@@ -105,7 +119,7 @@ function formatBdError(error: unknown, maxBufferMsg: string): string {
       return 'Cannot execute bd command: permission denied. Check file permissions.';
     }
     // Handle non-zero exit codes with actionable guidance
-    const exitCodeMatch = error.message.match(/exit code (\d+)/i);
+    const exitCodeMatch = error.message.match(EXIT_CODE_REGEX);
     if (exitCodeMatch) {
       const exitCode = exitCodeMatch[1];
       return `bd command failed (exit code ${exitCode}). Run 'bd <command>' manually to see detailed output.`;
@@ -156,6 +170,9 @@ export function clearBeadsInitializedCache(): void {
 }
 
 // Common bd installation paths to check if PATH lookup fails
+// Note: These are Unix-specific paths. Windows users should configure commandPath explicitly
+// or ensure bd is in their PATH. Windows installation typically puts binaries in %LOCALAPPDATA%
+// which varies per user and is better handled through explicit configuration.
 const BD_FALLBACK_PATHS = [
   '/opt/homebrew/bin/bd', // macOS ARM (Apple Silicon)
   '/usr/local/bin/bd', // macOS/Linux
@@ -185,10 +202,31 @@ function getBdCommand(): string {
 async function findBdExecutable(): Promise<string> {
   const cmd = getBdCommand();
 
-  // If it's already an absolute path, use it directly
+  // If it's already an absolute path, validate it before using
   if (cmd.startsWith('/')) {
-    return cmd;
+    try {
+      await access(cmd, fsConstants.X_OK);
+      return cmd;
+    } catch (error) {
+      // Provide specific guidance for common errors
+      if (hasErrorCode(error, 'EACCES')) {
+        warn(
+          `Configured bd path ${cmd} exists but cannot be executed. Check file permissions with: chmod +x ${cmd}`,
+        );
+      } else if (isNotFoundError(error)) {
+        warn(`Configured bd path ${cmd} does not exist. Check your beadsx.commandPath setting.`);
+      } else {
+        const errMsg = error instanceof Error ? error.message : String(error);
+        warn(`Configured bd path ${cmd} cannot be accessed: ${errMsg}`);
+      }
+      // Return the path anyway - will fail with error at execution time
+      // This allows the caller to get a more detailed error from execFile
+      return cmd;
+    }
   }
+
+  // Track if the configured command existed but failed (vs not found)
+  let configuredCommandFailed = false;
 
   // Try the command as-is first (PATH lookup)
   try {
@@ -200,25 +238,38 @@ async function findBdExecutable(): Promise<string> {
     if (isNotFoundError(error)) {
       log(`bd not found in PATH (${cmd}), checking common installation paths...`);
     } else {
-      // Non-ENOENT errors are unexpected - warn user but still try fallbacks
+      // Non-ENOENT errors mean the command exists but is broken
+      configuredCommandFailed = true;
       warn(`bd found but failed to run (${cmd}): ${errMsg}. Trying fallback paths...`);
     }
   }
 
   // Check fallback paths using fs constants for executable check
-  const { constants } = await import('node:fs/promises');
   for (const fallbackPath of BD_FALLBACK_PATHS) {
     try {
-      await access(fallbackPath, constants.X_OK);
-      log(`Found bd at fallback path: ${fallbackPath}`);
+      await access(fallbackPath, fsConstants.X_OK);
+      // If configured command existed but failed, warn that we're using a different binary
+      if (configuredCommandFailed) {
+        warn(
+          `Using fallback bd at ${fallbackPath} instead of configured command (${cmd}). ` +
+            `You may be using an unexpected bd installation with different version or configuration.`,
+        );
+      } else {
+        log(`Found bd at fallback path: ${fallbackPath}`);
+      }
       return fallbackPath;
     } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
-      // Distinguish expected errors (file not found) from unexpected system errors
-      if (isNotFoundError(error) || hasErrorCode(error, 'EACCES')) {
-        log(`Fallback path ${fallbackPath} not usable: ${errMsg}`);
+      // Distinguish expected errors (file not found) from permission issues
+      if (isNotFoundError(error)) {
+        log(`Fallback path ${fallbackPath} not found`);
+      } else if (hasErrorCode(error, 'EACCES')) {
+        // EACCES means the file EXISTS but can't be executed - user might want to fix permissions
+        warn(
+          `bd found at ${fallbackPath} but cannot execute (permission denied). Check file permissions with: chmod +x ${fallbackPath}`,
+        );
       } else {
         // Unexpected errors (ELOOP, EIO, etc.) - warn for visibility
+        const errMsg = error instanceof Error ? error.message : String(error);
         warn(`Unexpected error checking ${fallbackPath}: ${errMsg}`);
       }
     }
@@ -228,9 +279,6 @@ async function findBdExecutable(): Promise<string> {
   log('bd not found in fallback paths, using original command');
   return cmd;
 }
-
-// Cache the resolved bd path to avoid repeated lookups
-let cachedBdPath: string | null = null;
 
 /**
  * Clear the cached bd path (useful when config changes or after ENOENT errors)
@@ -290,6 +338,10 @@ export async function listReadyIssues(workspaceRoot: string): Promise<BeadsResul
     );
     log(`Error: Failed to execute 'bd ready': ${error}`);
     warn(errorMsg);
+    // Clear cache on ENOENT so subsequent attempts can find a newly-installed bd
+    if (isNotFoundError(error)) {
+      clearBdPathCache();
+    }
     return { success: false, data: [], error: errorMsg };
   }
 
@@ -321,8 +373,10 @@ export async function listReadyIssues(workspaceRoot: string): Promise<BeadsResul
     log(`Warning: bd ready returned unexpected format: ${typeof result}`);
     return { success: true, data: [] };
   } catch (error) {
+    // Include truncated content to help debugging (matching exportIssuesWithDeps behavior)
+    const truncatedOutput = stdout.length > 200 ? `${stdout.substring(0, 200)}...` : stdout;
     const errorMsg = `Failed to parse ready issues. Output may be corrupted.`;
-    log(`Error: Failed to parse 'bd ready' output: ${error}`);
+    log(`Error: Failed to parse 'bd ready' output: ${error}. Content: "${truncatedOutput}"`);
     warn(errorMsg);
     return { success: false, data: [], error: errorMsg };
   }
@@ -359,6 +413,10 @@ export async function exportIssuesWithDeps(
     );
     log(`Error: Failed to execute 'bd export': ${error}`);
     warn(errorMsg);
+    // Clear cache on ENOENT so subsequent attempts can find a newly-installed bd
+    if (isNotFoundError(error)) {
+      clearBdPathCache();
+    }
     return { success: false, data: [], error: errorMsg };
   }
 
