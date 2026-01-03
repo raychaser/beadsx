@@ -1,6 +1,13 @@
 import * as vscode from 'vscode';
 import { BeadsIssue, type FilterMode, listFilteredIssuesWithConfig } from './beadsService';
-import { formatTimeAgo, type SortMode, shouldAutoExpandInRecent, sortIssues } from './utils';
+import {
+  formatTimeAgo,
+  type SortMode,
+  shouldAutoExpandInRecent,
+  sortChildrenForRecentView,
+  sortIssues,
+  sortRootIssuesForRecentView,
+} from './utils';
 
 export { BeadsIssue };
 
@@ -303,13 +310,15 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
       await this.loadingPromise;
     }
 
-    // Determine sort mode based on filter mode
-    const sortMode: SortMode = this.filterMode === 'recent' ? 'recent' : 'default';
+    // Determine if we're in Recent view for special sorting
+    const isRecentView = this.filterMode === 'recent';
+    const sortMode: SortMode = isRecentView ? 'recent' : 'default';
 
     if (element) {
       // Return children of this element (issues whose parentId matches this element's id)
       const children = this.issuesCache.filter((issue) => issue.parentId === element.id);
-      return sortIssues(children, sortMode);
+      // For Recent view, sort children by non-closed first (by priority), then closed (by priority)
+      return isRecentView ? sortChildrenForRecentView(children) : sortIssues(children, sortMode);
     }
 
     // Return root issues (issues with no parent OR whose parent is not in the filtered cache)
@@ -319,7 +328,8 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
       const parentInCache = this.issuesCache.some((i) => i.id === issue.parentId);
       return !parentInCache;
     });
-    return sortIssues(roots, sortMode);
+    // For Recent view, sort roots with epics first (by update time), then non-epics (by status/priority)
+    return isRecentView ? sortRootIssuesForRecentView(roots) : sortIssues(roots, sortMode);
   }
 
   getParent(element: BeadsIssue): BeadsIssue | undefined {

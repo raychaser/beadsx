@@ -29,15 +29,16 @@ export type {
   SortableIssue,
   SortMode,
 } from './types';
-
+export type { RootSortableIssue } from './utils';
 export {
   DEFAULT_RECENT_WINDOW_MINUTES,
   formatTimeAgo,
   MAX_RECENT_WINDOW_MINUTES,
   MIN_RECENT_WINDOW_MINUTES,
-  RECENT_VIEW_PRIORITY_THRESHOLD,
   shouldAutoExpandInRecent,
+  sortChildrenForRecentView,
   sortIssues,
+  sortRootIssuesForRecentView,
   truncateTitle,
   validateRecentWindowMinutes,
 } from './utils';

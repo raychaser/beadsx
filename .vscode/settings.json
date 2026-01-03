@@ -1,5 +1,6 @@
 {
-	"workbench.preferredDarkColorTheme": "Default Dark Modern",
-	"workbench.colorTheme": "Bearded Theme Solarized Light",
-	"beadsx.autoReloadInterval": 4
+  "workbench.preferredDarkColorTheme": "Default Dark Modern",
+  "workbench.colorTheme": "Better Solarized Dark",
+  "beadsx.autoReloadInterval": 4,
+  "beadsx.shortIds": true
 }
