@@ -38,6 +38,7 @@ export {
   shouldAutoExpandInRecent,
   sortChildrenForRecentView,
   sortIssues,
+  sortIssuesForRecentView,
   sortRootIssuesForRecentView,
   truncateTitle,
   validateRecentWindowMinutes,

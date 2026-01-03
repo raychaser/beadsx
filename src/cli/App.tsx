@@ -9,10 +9,8 @@ import {
   type SortMode,
   getRootIssues,
   listFilteredIssues,
-  shouldAutoExpandInRecent,
-  sortChildrenForRecentView,
   sortIssues,
-  sortRootIssuesForRecentView,
+  sortIssuesForRecentView,
 } from '../core';
 import { DetailView, getSelectableChildrenCount, getSelectedChild } from './components/DetailView';
 import { FilterBar } from './components/FilterBar';
@@ -53,6 +51,9 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
   // Track previously seen issue IDs to detect new issues on refresh
   const previousIssueIdsRef = useRef<Set<string>>(new Set());
 
+  // Track previous filter to detect filter changes (for re-computing expansion)
+  const previousFilterRef = useRef<FilterMode>(filter);
+
   // Calculate available height for issue tree (terminal - FilterBar - StatusBar)
   const treeHeight = Math.max(1, terminalHeight - 2);
 
@@ -82,15 +83,20 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
         if (!hasChildren) return false;
 
         if (filter === 'recent') {
-          // For Recent view: expand if issue is in_progress OR has any non-closed descendants
-          return issue.status === 'in_progress' || shouldAutoExpandInRecent(issue, loaded);
+          // For Recent view: expand all nodes with children (simple rule)
+          return true;
         }
         // For other views: expand all non-closed issues with children
         return issue.status !== 'closed';
       };
 
-      if (loading) {
-        // Initial load: compute full expansion state
+      // Detect filter change - if filter changed, we need to recompute expansion state
+      const filterChanged = filter !== previousFilterRef.current;
+      previousFilterRef.current = filter;
+
+      if (loading || filterChanged) {
+        // Initial load OR filter change: compute full expansion state
+        // This ensures switching to Recent view expands all parent nodes
         const toExpand = new Set<string>();
         for (const issue of loaded) {
           if (shouldExpandIssue(issue)) {
@@ -98,6 +104,10 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
           }
         }
         setExpandedIds(toExpand);
+        // Clear user-collapsed state on filter change (fresh start)
+        if (filterChanged) {
+          setUserCollapsedIds(new Set());
+        }
       } else {
         // Refresh: expand newly-discovered issues AND their parents
         const newIssueIds = new Set([...currentIds].filter((id) => !previousIds.has(id)));
@@ -229,22 +239,22 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
   const getVisibleIssues = useCallback((): BeadsIssue[] => {
     const visible: BeadsIssue[] = [];
 
-    // For Recent view, use special sorting that puts epics first (by update time)
-    // and sorts children by non-closed first (by priority), then closed (by priority)
+    // For Recent view, use unified sorting at all levels:
+    // epics first (by update time), then non-closed (by priority), then closed (by priority)
     const isRecentView = filter === 'recent';
     const sortMode: SortMode = isRecentView ? 'recent' : 'default';
 
     // Get roots with appropriate sorting
     const rawRoots = getRootIssues(issues);
-    const roots = isRecentView ? sortRootIssuesForRecentView(rawRoots) : sortIssues(rawRoots, sortMode);
+    const roots = isRecentView ? sortIssuesForRecentView(rawRoots) : sortIssues(rawRoots, sortMode);
 
     const addWithChildren = (issue: BeadsIssue, depth: number) => {
       visible.push(issue);
       if (expandedIds.has(issue.id)) {
         const rawChildren = issues.filter((i) => i.parentId === issue.id);
-        // For Recent view children, use status/priority sort (non-closed first)
+        // For Recent view: use same sorting at all levels (epics first, then by status/priority)
         const children = isRecentView
-          ? sortChildrenForRecentView(rawChildren)
+          ? sortIssuesForRecentView(rawChildren)
           : sortIssues(rawChildren, sortMode);
         for (const child of children) {
           addWithChildren(child, depth + 1);
