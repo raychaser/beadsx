@@ -51,6 +51,9 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
   // Track previously seen issue IDs to detect new issues on refresh
   const previousIssueIdsRef = useRef<Set<string>>(new Set());
 
+  // Track previous filter to detect filter changes (for re-computing expansion)
+  const previousFilterRef = useRef<FilterMode>(filter);
+
   // Calculate available height for issue tree (terminal - FilterBar - StatusBar)
   const treeHeight = Math.max(1, terminalHeight - 2);
 
@@ -87,8 +90,13 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
         return issue.status !== 'closed';
       };
 
-      if (loading) {
-        // Initial load: compute full expansion state
+      // Detect filter change - if filter changed, we need to recompute expansion state
+      const filterChanged = filter !== previousFilterRef.current;
+      previousFilterRef.current = filter;
+
+      if (loading || filterChanged) {
+        // Initial load OR filter change: compute full expansion state
+        // This ensures switching to Recent view expands all parent nodes
         const toExpand = new Set<string>();
         for (const issue of loaded) {
           if (shouldExpandIssue(issue)) {
@@ -96,6 +104,10 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
           }
         }
         setExpandedIds(toExpand);
+        // Clear user-collapsed state on filter change (fresh start)
+        if (filterChanged) {
+          setUserCollapsedIds(new Set());
+        }
       } else {
         // Refresh: expand newly-discovered issues AND their parents
         const newIssueIds = new Set([...currentIds].filter((id) => !previousIds.has(id)));
