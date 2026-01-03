@@ -7,8 +7,8 @@ export interface BeadsDependency {
   created_at: string;
 }
 
-// Issue status values
-export type IssueStatus = 'open' | 'in_progress' | 'blocked' | 'closed';
+// Issue status values (tombstone = soft-deleted, should be filtered out of views)
+export type IssueStatus = 'open' | 'in_progress' | 'blocked' | 'closed' | 'tombstone';
 
 // Issue type values
 export type IssueType = 'bug' | 'feature' | 'epic' | 'chore' | 'task';

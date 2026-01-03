@@ -8,6 +8,7 @@ export const STATUS_ICONS: Record<IssueStatus, string> = {
   in_progress: '●',
   blocked: '✖',
   open: '○',
+  tombstone: '🗑', // Soft-deleted issues - should be filtered out before display
 };
 
 // Type icons with proper type safety
@@ -70,6 +71,8 @@ export function getStatusColor(status: string): string {
       return 'red';
     case 'open':
       return 'white';
+    case 'tombstone':
+      return 'gray'; // Soft-deleted - should be filtered out before display
     default:
       console.warn(`[cli] Unknown status "${status}" for color, using magenta`);
       return 'magenta';

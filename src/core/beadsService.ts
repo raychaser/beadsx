@@ -375,9 +375,13 @@ export async function exportIssuesWithDeps(
     return { success: false, data: issues, error: errorMsg };
   }
 
-  log(`parsed ${issues.length} issues successfully`);
+  // Filter out tombstone (soft-deleted) issues - they should never appear in views
+  const activeIssues = issues.filter((issue) => issue.status !== 'tombstone');
+  log(
+    `parsed ${issues.length} issues, ${activeIssues.length} active (filtered ${issues.length - activeIssues.length} tombstones)`,
+  );
 
-  return { success: true, data: issues };
+  return { success: true, data: activeIssues };
 }
 
 export async function listFilteredIssues(
