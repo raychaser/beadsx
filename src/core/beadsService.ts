@@ -69,8 +69,26 @@ function warn(message: string): void {
 }
 
 /**
+ * Type guard to check if an error has a specific error code.
+ * Works with Node.js errors that have a 'code' property (ENOENT, EACCES, etc.).
+ */
+function hasErrorCode(error: unknown, code: string): boolean {
+  return error instanceof Error && 'code' in error && (error as { code: string }).code === code;
+}
+
+/**
+ * Check if an error indicates "command not found" (ENOENT).
+ * Returns true for expected "not found" errors, false for unexpected system errors.
+ */
+function isNotFoundError(error: unknown): boolean {
+  if (hasErrorCode(error, 'ENOENT')) return true;
+  if (error instanceof Error && error.message.includes('ENOENT')) return true;
+  return false;
+}
+
+/**
  * Format bd command errors with user-friendly messages.
- * Handles common error types: maxBuffer exceeded, ENOENT, ETIMEDOUT, EACCES.
+ * Handles common error types: maxBuffer exceeded, ENOENT, ETIMEDOUT, EACCES, exit codes.
  */
 function formatBdError(error: unknown, maxBufferMsg: string): string {
   if (error instanceof Error) {
@@ -83,8 +101,14 @@ function formatBdError(error: unknown, maxBufferMsg: string): string {
     if (error.message.includes('ETIMEDOUT')) {
       return 'bd command timed out. Check if the database is locked or inaccessible.';
     }
-    if ('code' in error && (error as { code: string }).code === 'EACCES') {
+    if (hasErrorCode(error, 'EACCES')) {
       return 'Cannot execute bd command: permission denied. Check file permissions.';
+    }
+    // Handle non-zero exit codes with actionable guidance
+    const exitCodeMatch = error.message.match(/exit code (\d+)/i);
+    if (exitCodeMatch) {
+      const exitCode = exitCodeMatch[1];
+      return `bd command failed (exit code ${exitCode}). Run 'bd <command>' manually to see detailed output.`;
     }
     return `bd command failed: ${error.message}`;
   }
@@ -110,7 +134,7 @@ export async function isBeadsInitialized(workspaceRoot: string): Promise<boolean
     return true;
   } catch (error: unknown) {
     // ENOENT means directory doesn't exist - expected case, cache the result
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+    if (hasErrorCode(error, 'ENOENT')) {
       beadsInitializedCache.set(workspaceRoot, false);
       return false;
     }
@@ -171,10 +195,14 @@ async function findBdExecutable(): Promise<string> {
     await execFileAsync(cmd, ['--version'], { timeout: 5000 });
     return cmd; // PATH lookup worked
   } catch (error) {
-    // Log the specific error for debugging
     const errMsg = error instanceof Error ? error.message : String(error);
-    log(`bd PATH lookup failed (${cmd}): ${errMsg}`);
-    log('Checking common installation paths...');
+    // Distinguish expected errors (command not found) from unexpected system errors
+    if (isNotFoundError(error)) {
+      log(`bd not found in PATH (${cmd}), checking common installation paths...`);
+    } else {
+      // Non-ENOENT errors are unexpected - warn user but still try fallbacks
+      warn(`bd found but failed to run (${cmd}): ${errMsg}. Trying fallback paths...`);
+    }
   }
 
   // Check fallback paths using fs constants for executable check
@@ -185,9 +213,14 @@ async function findBdExecutable(): Promise<string> {
       log(`Found bd at fallback path: ${fallbackPath}`);
       return fallbackPath;
     } catch (error) {
-      // Log why this path didn't work for debugging
       const errMsg = error instanceof Error ? error.message : String(error);
-      log(`Fallback path ${fallbackPath} not usable: ${errMsg}`);
+      // Distinguish expected errors (file not found) from unexpected system errors
+      if (isNotFoundError(error) || hasErrorCode(error, 'EACCES')) {
+        log(`Fallback path ${fallbackPath} not usable: ${errMsg}`);
+      } else {
+        // Unexpected errors (ELOOP, EIO, etc.) - warn for visibility
+        warn(`Unexpected error checking ${fallbackPath}: ${errMsg}`);
+      }
     }
   }
 
@@ -261,7 +294,11 @@ export async function listReadyIssues(workspaceRoot: string): Promise<BeadsResul
   }
 
   if (stderr) {
-    log(`Warning: bd ready stderr: ${stderr}`);
+    // Surface non-empty stderr to users - may contain important warnings from bd
+    const stderrTrimmed = stderr.trim();
+    if (stderrTrimmed) {
+      warn(`bd ready warning: ${stderrTrimmed}`);
+    }
   }
 
   if (!stdout || !stdout.trim()) {
@@ -326,7 +363,11 @@ export async function exportIssuesWithDeps(
   }
 
   if (stderr) {
-    log(`stderr: ${stderr}`);
+    // Surface non-empty stderr to users - may contain important warnings from bd
+    const stderrTrimmed = stderr.trim();
+    if (stderrTrimmed) {
+      warn(`bd export warning: ${stderrTrimmed}`);
+    }
   }
 
   log(`stdout length: ${stdout?.length ?? 0}`);
@@ -360,7 +401,9 @@ export async function exportIssuesWithDeps(
       }
       issues.push(issue);
     } catch (error) {
-      log(`Failed to parse line ${i}: ${error}`);
+      // Include truncated line content to help debugging
+      const truncatedContent = line.length > 100 ? `${line.substring(0, 100)}...` : line;
+      log(`Failed to parse line ${i}: ${error}. Content: "${truncatedContent}"`);
       parseErrors++;
     }
   }
