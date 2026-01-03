@@ -169,11 +169,8 @@ export function truncateTitle(title: string, maxWidth: number): string {
 /**
  * Determines whether a tree node should be auto-expanded in Recent view.
  *
- * For the Recent view, we want to auto-expand nodes that contain any non-closed work.
- * This is simpler than priority-based expansion - any open/in_progress/blocked child
- * will cause the parent to expand.
- *
- * Handles circular parent references by tracking visited nodes to prevent infinite recursion.
+ * @deprecated No longer used - Recent view now expands all nodes by default.
+ * Users can manually collapse nodes and the state persists during the session.
  *
  * @param issue - The issue (tree node) to check for auto-expansion
  * @param allIssues - All issues in the current view (needed to find children)
@@ -211,6 +208,9 @@ export function shouldAutoExpandInRecent(
  * Sort issues for Recent view children.
  * Order: non-closed issues first (by priority), then closed issues (by priority).
  *
+ * @deprecated Use sortIssuesForRecentView instead - it applies consistent sorting
+ * (epics first, then non-closed by priority, then closed by priority) at all tree levels.
+ *
  * @param issues - Issues to sort
  * @returns New sorted array (does not mutate input)
  */
@@ -242,10 +242,23 @@ export interface RootSortableIssue extends SortableIssue {
  * Epics are sorted by updated_at (most recent first) and placed before non-epics.
  * Non-epics are sorted by status/priority (non-closed first, then by priority).
  *
+ * @deprecated Use sortIssuesForRecentView instead - it applies the same sorting at all tree levels
  * @param issues - Root issues to sort
  * @returns New sorted array (does not mutate input)
  */
 export function sortRootIssuesForRecentView<T extends RootSortableIssue>(issues: T[]): T[] {
+  return sortIssuesForRecentView(issues);
+}
+
+/**
+ * Sort issues for Recent view at any tree level.
+ * Applies consistent sorting: epics first (by updated_at), then non-closed (by priority),
+ * then closed (by priority).
+ *
+ * @param issues - Issues to sort (at any level: root, children, grandchildren, etc.)
+ * @returns New sorted array (does not mutate input)
+ */
+export function sortIssuesForRecentView<T extends RootSortableIssue>(issues: T[]): T[] {
   const epics = issues.filter((i) => i.issue_type === 'epic');
   const nonEpics = issues.filter((i) => i.issue_type !== 'epic');
 
@@ -259,8 +272,17 @@ export function sortRootIssuesForRecentView<T extends RootSortableIssue>(issues:
     return safeBTime - safeATime; // Descending (most recent first)
   });
 
-  // Sort non-epics by status/priority
-  const sortedNonEpics = sortChildrenForRecentView(nonEpics);
+  // Sort non-epics: non-closed first by priority, then closed by priority
+  const sortedNonEpics = [...nonEpics].sort((a, b) => {
+    const aOpen = a.status !== 'closed';
+    const bOpen = b.status !== 'closed';
+    if (aOpen && !bOpen) return -1;
+    if (!aOpen && bOpen) return 1;
+    // Same status group: sort by priority (lower = higher priority)
+    const aPriority = Number.isFinite(a.priority) ? a.priority : Number.MAX_SAFE_INTEGER;
+    const bPriority = Number.isFinite(b.priority) ? b.priority : Number.MAX_SAFE_INTEGER;
+    return aPriority - bPriority;
+  });
 
   // Combine: epics first (by recency), then non-epics (by status/priority)
   return [...sortedEpics, ...sortedNonEpics];
