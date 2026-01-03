@@ -1,11 +1,15 @@
 // Core exports - shared between VS Code extension and CLI
 
+// beadsx-918: Export BeadsInitStatus type for consumers that need detailed init status
+export type { BeadsInitStatus } from './beadsService';
 export {
   buildBdArgs,
+  clearBdPathCache,
   clearBeadsInitializedCache,
   configure,
   exportIssuesWithDeps,
   getAllAncestors,
+  getBeadsInitStatus,
   getChildren,
   getConfig,
   getRootIssues,

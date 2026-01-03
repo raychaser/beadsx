@@ -7,6 +7,7 @@ import {
   type BeadsDependency,
   type BeadsIssue,
   buildBdArgs,
+  clearBdPathCache,
   clearBeadsInitializedCache,
   configure,
   type FilterMode,
@@ -22,6 +23,7 @@ import { DEFAULT_RECENT_WINDOW_MINUTES } from './core/utils';
 export type { BeadsDependency, BeadsIssue, FilterMode };
 export {
   buildBdArgs,
+  clearBdPathCache,
   clearBeadsInitializedCache,
   configure,
   getAllAncestors,

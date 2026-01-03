@@ -22,6 +22,7 @@ import { access } from 'node:fs/promises';
 import {
   type BeadsIssue,
   buildBdArgs,
+  clearBdPathCache,
   clearBeadsInitializedCache,
   configure,
   getAllAncestors,
@@ -314,6 +315,22 @@ describe('clearBeadsInitializedCache', () => {
   });
 });
 
+describe('clearBdPathCache', () => {
+  it('should be callable without error', () => {
+    // clearBdPathCache clears the internal cached bd executable path
+    // This allows the path to be re-discovered on the next command invocation
+    expect(() => clearBdPathCache()).not.toThrow();
+  });
+
+  it('can be called multiple times without error', () => {
+    expect(() => {
+      clearBdPathCache();
+      clearBdPathCache();
+      clearBdPathCache();
+    }).not.toThrow();
+  });
+});
+
 describe('getBdCommand validation', () => {
   // Note: getBdCommand is not exported, but we can test it indirectly
   // through the behavior of listReadyIssues and exportIssuesWithDeps
@@ -420,17 +437,16 @@ describe('buildBdArgs', () => {
     expect(original).toEqual(originalCopy);
   });
 
-  it('handles non-array input gracefully when useJsonlMode is true', () => {
+  // beadsx-906: buildBdArgs now throws for non-array input instead of silently recovering
+  it('throws for non-array input when useJsonlMode is true', () => {
     configure({ useJsonlMode: true });
     // @ts-expect-error - Testing runtime behavior with invalid input
-    const result = buildBdArgs(null);
-    expect(result).toEqual(['--no-db']);
+    expect(() => buildBdArgs(null)).toThrow('buildBdArgs: args must be an array');
   });
 
-  it('handles non-array input gracefully when useJsonlMode is false', () => {
+  it('throws for non-array input when useJsonlMode is false', () => {
     configure({ useJsonlMode: false });
     // @ts-expect-error - Testing runtime behavior with invalid input
-    const result = buildBdArgs(undefined);
-    expect(result).toEqual([]);
+    expect(() => buildBdArgs(undefined)).toThrow('buildBdArgs: args must be an array');
   });
 });

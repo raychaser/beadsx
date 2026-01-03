@@ -16,6 +16,7 @@ describe('STATUS_ICONS', () => {
     expect(STATUS_ICONS.in_progress).toBe('●');
     expect(STATUS_ICONS.blocked).toBe('✖');
     expect(STATUS_ICONS.closed).toBe('✓');
+    expect(STATUS_ICONS.tombstone).toBe('🗑');
   });
 });
 
@@ -45,6 +46,7 @@ describe('getStatusIcon', () => {
     expect(getStatusIcon('in_progress')).toBe('●');
     expect(getStatusIcon('blocked')).toBe('✖');
     expect(getStatusIcon('closed')).toBe('✓');
+    expect(getStatusIcon('tombstone')).toBe('🗑');
   });
 
   it('returns unknown icon for invalid status', () => {
@@ -104,6 +106,7 @@ describe('getStatusColor', () => {
     expect(getStatusColor('in_progress')).toBe('yellow');
     expect(getStatusColor('blocked')).toBe('red');
     expect(getStatusColor('closed')).toBe('green');
+    expect(getStatusColor('tombstone')).toBe('gray');
   });
 
   it('returns magenta for invalid status to make it visible', () => {
