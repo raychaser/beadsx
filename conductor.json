@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "setup": " bd hooks install; cp ~/git/raychaser/experimental/beadsx/.git/beads-worktrees/main/.env .; pnpm i",
+    "setup": "bd init --prefix beadsx; bd hooks install; cp ~/git/raychaser/experimental/beadsx/.git/beads-worktrees/main/.env .; pnpm i",
     "run": "pnpm cli:dev"
   }
 }
