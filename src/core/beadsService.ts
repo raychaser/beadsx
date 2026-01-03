@@ -69,6 +69,29 @@ function warn(message: string): void {
 }
 
 /**
+ * Format bd command errors with user-friendly messages.
+ * Handles common error types: maxBuffer exceeded, ENOENT, ETIMEDOUT, EACCES.
+ */
+function formatBdError(error: unknown, maxBufferMsg: string): string {
+  if (error instanceof Error) {
+    if (error.message.includes('maxBuffer')) {
+      return maxBufferMsg;
+    }
+    if (error.message.includes('ENOENT')) {
+      return 'bd command not found. Is it installed and in your PATH?';
+    }
+    if (error.message.includes('ETIMEDOUT')) {
+      return 'bd command timed out. Check if the database is locked or inaccessible.';
+    }
+    if ('code' in error && (error as { code: string }).code === 'EACCES') {
+      return 'Cannot execute bd command: permission denied. Check file permissions.';
+    }
+    return `bd command failed: ${error.message}`;
+  }
+  return `bd command failed: ${String(error)}`;
+}
+
+/**
  * Check if beads is initialized in the given workspace
  * Returns true if .beads/ directory exists
  * Uses async fs access with caching to avoid blocking the UI thread
@@ -147,9 +170,11 @@ async function findBdExecutable(): Promise<string> {
   try {
     await execFileAsync(cmd, ['--version'], { timeout: 5000 });
     return cmd; // PATH lookup worked
-  } catch {
-    // PATH lookup failed, try fallback paths
-    log('bd not found in PATH, checking common installation paths...');
+  } catch (error) {
+    // Log the specific error for debugging
+    const errMsg = error instanceof Error ? error.message : String(error);
+    log(`bd PATH lookup failed (${cmd}): ${errMsg}`);
+    log('Checking common installation paths...');
   }
 
   // Check fallback paths using fs constants for executable check
@@ -159,8 +184,10 @@ async function findBdExecutable(): Promise<string> {
       await access(fallbackPath, constants.X_OK);
       log(`Found bd at fallback path: ${fallbackPath}`);
       return fallbackPath;
-    } catch {
-      // Path doesn't exist or isn't executable, try next
+    } catch (error) {
+      // Log why this path didn't work for debugging
+      const errMsg = error instanceof Error ? error.message : String(error);
+      log(`Fallback path ${fallbackPath} not usable: ${errMsg}`);
     }
   }
 
@@ -224,24 +251,10 @@ export async function listReadyIssues(workspaceRoot: string): Promise<BeadsResul
     stdout = result.stdout;
     stderr = result.stderr;
   } catch (error) {
-    // Provide more specific error messages based on error type
-    let errorMsg: string;
-    if (error instanceof Error && error.message.includes('maxBuffer')) {
-      errorMsg = 'Too many ready issues. Please filter or compact old issues.';
-    } else if (error instanceof Error && error.message.includes('ENOENT')) {
-      errorMsg = `bd command not found. Is it installed and in your PATH?`;
-    } else if (error instanceof Error && error.message.includes('ETIMEDOUT')) {
-      errorMsg = `bd command timed out. Check if the database is locked or inaccessible.`;
-    } else if (
-      error instanceof Error &&
-      'code' in error &&
-      (error as { code: string }).code === 'EACCES'
-    ) {
-      errorMsg = `Cannot execute bd command: permission denied. Check file permissions.`;
-    } else {
-      const errDetail = error instanceof Error ? error.message : String(error);
-      errorMsg = `bd command failed: ${errDetail}`;
-    }
+    const errorMsg = formatBdError(
+      error,
+      'Too many ready issues. Please filter or compact old issues.',
+    );
     log(`Error: Failed to execute 'bd ready': ${error}`);
     warn(errorMsg);
     return { success: false, data: [], error: errorMsg };
@@ -303,24 +316,10 @@ export async function exportIssuesWithDeps(
     stdout = result.stdout;
     stderr = result.stderr;
   } catch (error) {
-    // Provide more specific error messages based on error type
-    let errorMsg: string;
-    if (error instanceof Error && error.message.includes('maxBuffer')) {
-      errorMsg = 'Issue database too large. Please compact old issues with "bd compact".';
-    } else if (error instanceof Error && error.message.includes('ENOENT')) {
-      errorMsg = `bd command not found. Is it installed and in your PATH?`;
-    } else if (error instanceof Error && error.message.includes('ETIMEDOUT')) {
-      errorMsg = `bd command timed out. Check if the database is locked or inaccessible.`;
-    } else if (
-      error instanceof Error &&
-      'code' in error &&
-      (error as { code: string }).code === 'EACCES'
-    ) {
-      errorMsg = `Cannot execute bd command: permission denied. Check file permissions.`;
-    } else {
-      const errDetail = error instanceof Error ? error.message : String(error);
-      errorMsg = `bd command failed: ${errDetail}`;
-    }
+    const errorMsg = formatBdError(
+      error,
+      'Issue database too large. Please compact old issues with "bd compact".',
+    );
     log(`Error: Failed to execute 'bd export': ${error}`);
     warn(errorMsg);
     return { success: false, data: [], error: errorMsg };
@@ -405,7 +404,11 @@ export async function listFilteredIssues(
   log(`listFilteredIssues got ${issues.length} issues from export`);
 
   if (filter === 'open') {
-    const openIssues = issues.filter((issue) => issue.status !== 'closed');
+    // Defensive: explicitly exclude both closed and tombstone statuses
+    // Tombstones are filtered earlier in exportIssuesWithDeps, but this guards against regressions
+    const openIssues = issues.filter(
+      (issue) => issue.status !== 'closed' && issue.status !== 'tombstone',
+    );
     log(`listFilteredIssues returning ${openIssues.length} open issues`);
     return { success: true, data: openIssues };
   }
@@ -420,6 +423,8 @@ export async function listFilteredIssues(
     const cutoffTime = Date.now() - recentWindowMinutes * 60 * 1000;
 
     const recentIssues = issues.filter((issue) => {
+      // Defensive: exclude tombstones even though they're filtered earlier
+      if (issue.status === 'tombstone') return false;
       if (issue.status !== 'closed') return true;
       if (!issue.closed_at) {
         log(`Warning: Closed issue ${issue.id} has no closed_at timestamp`);

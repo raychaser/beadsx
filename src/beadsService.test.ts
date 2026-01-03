@@ -22,6 +22,7 @@ import { access } from 'node:fs/promises';
 import {
   type BeadsIssue,
   buildBdArgs,
+  clearBdPathCache,
   clearBeadsInitializedCache,
   configure,
   getAllAncestors,
@@ -311,6 +312,22 @@ describe('clearBeadsInitializedCache', () => {
     await isBeadsInitialized('/workspace1');
     await isBeadsInitialized('/workspace2');
     expect(mockAccess).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe('clearBdPathCache', () => {
+  it('should be callable without error', () => {
+    // clearBdPathCache clears the internal cached bd executable path
+    // This allows the path to be re-discovered on the next command invocation
+    expect(() => clearBdPathCache()).not.toThrow();
+  });
+
+  it('can be called multiple times without error', () => {
+    expect(() => {
+      clearBdPathCache();
+      clearBdPathCache();
+      clearBdPathCache();
+    }).not.toThrow();
   });
 });
 

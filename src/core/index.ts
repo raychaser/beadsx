@@ -2,6 +2,7 @@
 
 export {
   buildBdArgs,
+  clearBdPathCache,
   clearBeadsInitializedCache,
   configure,
   exportIssuesWithDeps,
