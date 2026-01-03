@@ -10,7 +10,9 @@ import {
   getRootIssues,
   listFilteredIssues,
   shouldAutoExpandInRecent,
+  sortChildrenForRecentView,
   sortIssues,
+  sortRootIssuesForRecentView,
 } from '../core';
 import { DetailView, getSelectableChildrenCount, getSelectedChild } from './components/DetailView';
 import { FilterBar } from './components/FilterBar';
@@ -43,6 +45,10 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
   const [viewMode, setViewMode] = useState<'tree' | 'detail'>('tree');
   const [detailStack, setDetailStack] = useState<string[]>([]); // Stack of issue IDs for navigation history
   const [selectedChildIndex, setSelectedChildIndex] = useState(0);
+
+  // Track user-initiated collapses separately from auto-expanded state
+  // This allows us to override user collapse when new non-closed children appear
+  const [userCollapsedIds, setUserCollapsedIds] = useState<Set<string>>(new Set());
 
   // Track previously seen issue IDs to detect new issues on refresh
   const previousIssueIdsRef = useRef<Set<string>>(new Set());
@@ -95,11 +101,37 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
       } else {
         // Refresh: expand newly-discovered issues AND their parents
         const newIssueIds = new Set([...currentIds].filter((id) => !previousIds.has(id)));
-        if (newIssueIds.size > 0) {
-          const newToExpand: string[] = [];
 
-          // Build a map for quick parent lookup
-          const issueMap = new Map(loaded.map((i) => [i.id, i]));
+        // Build a map for quick parent lookup
+        const issueMap = new Map(loaded.map((i) => [i.id, i]));
+
+        // Helper to check if an issue has any non-closed children
+        const hasNonClosedChildren = (issueId: string): boolean => {
+          return loaded.some((i) => i.parentId === issueId && i.status !== 'closed');
+        };
+
+        // Find user-collapsed parents that now have new non-closed children
+        // These should be forcibly expanded (override user collapse)
+        const toForceExpand: string[] = [];
+        setUserCollapsedIds((prev) => {
+          const next = new Set(prev);
+          for (const collapsedId of prev) {
+            if (hasNonClosedChildren(collapsedId)) {
+              // Check if any child is new
+              const hasNewChild = loaded.some(
+                (i) => i.parentId === collapsedId && newIssueIds.has(i.id) && i.status !== 'closed',
+              );
+              if (hasNewChild) {
+                next.delete(collapsedId);
+                toForceExpand.push(collapsedId);
+              }
+            }
+          }
+          return next;
+        });
+
+        if (newIssueIds.size > 0 || toForceExpand.length > 0) {
+          const newToExpand: string[] = [...toForceExpand];
 
           // Find all ancestors of new issues (with cycle detection)
           const ancestorsOfNewIssues = new Set<string>();
@@ -190,14 +222,24 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
   // Build flat list of visible issues for navigation
   const getVisibleIssues = useCallback((): BeadsIssue[] => {
     const visible: BeadsIssue[] = [];
-    // Determine sort mode based on filter mode (same logic as VSCode extension)
-    const sortMode: SortMode = filter === 'recent' ? 'recent' : 'default';
-    const roots = sortIssues(getRootIssues(issues), sortMode);
+
+    // For Recent view, use special sorting that puts epics first (by update time)
+    // and sorts children by non-closed first (by priority), then closed (by priority)
+    const isRecentView = filter === 'recent';
+    const sortMode: SortMode = isRecentView ? 'recent' : 'default';
+
+    // Get roots with appropriate sorting
+    const rawRoots = getRootIssues(issues);
+    const roots = isRecentView ? sortRootIssuesForRecentView(rawRoots) : sortIssues(rawRoots, sortMode);
 
     const addWithChildren = (issue: BeadsIssue, depth: number) => {
       visible.push(issue);
       if (expandedIds.has(issue.id)) {
-        const children = sortIssues(issues.filter((i) => i.parentId === issue.id), sortMode);
+        const rawChildren = issues.filter((i) => i.parentId === issue.id);
+        // For Recent view children, use status/priority sort (non-closed first)
+        const children = isRecentView
+          ? sortChildrenForRecentView(rawChildren)
+          : sortIssues(rawChildren, sortMode);
         for (const child of children) {
           addWithChildren(child, depth + 1);
         }
@@ -309,6 +351,8 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
     // Expand/collapse
     else if (key === 'left' || key === 'h') {
       if (selectedIssue && expandedIds.has(selectedIssue.id)) {
+        // Track user-initiated collapse
+        setUserCollapsedIds((ids) => new Set(ids).add(selectedIssue.id));
         setExpandedIds((ids) => {
           const next = new Set(ids);
           next.delete(selectedIssue.id);
@@ -319,6 +363,12 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
       if (selectedIssue) {
         const hasChildren = issues.some((i) => i.parentId === selectedIssue.id);
         if (hasChildren) {
+          // Clear user-collapsed state when user explicitly expands
+          setUserCollapsedIds((ids) => {
+            const next = new Set(ids);
+            next.delete(selectedIssue.id);
+            return next;
+          });
           setExpandedIds((ids) => new Set(ids).add(selectedIssue.id));
         }
       }

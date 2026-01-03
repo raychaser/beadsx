@@ -164,29 +164,11 @@ export function truncateTitle(title: string, maxWidth: number): string {
 }
 
 /**
- * Priority threshold for "important" issues in Recent view auto-expansion.
- * Issues with priority < this value (P0-P3) are considered important.
- * Issues with priority >= this value (P4+) are considered backlog/low-priority.
- */
-export const RECENT_VIEW_PRIORITY_THRESHOLD = 4;
-
-/**
- * Checks if a priority value is valid (a finite number).
- * Invalid priorities (undefined, NaN, Infinity) are treated as backlog.
- */
-function isValidPriority(priority: unknown): priority is number {
-  return typeof priority === 'number' && Number.isFinite(priority);
-}
-
-/**
  * Determines whether a tree node should be auto-expanded in Recent view.
  *
- * For the Recent view, we want to auto-expand nodes that contain "important" work:
- * - Issues that are `in_progress` (actively being worked on)
- * - Non-closed issues with priority < 4 (P0-P3)
- *
- * Nodes whose subtrees only contain P4+ (backlog) open issues that aren't in_progress
- * are collapsed by default to reduce visual noise.
+ * For the Recent view, we want to auto-expand nodes that contain any non-closed work.
+ * This is simpler than priority-based expansion - any open/in_progress/blocked child
+ * will cause the parent to expand.
  *
  * Handles circular parent references by tracking visited nodes to prevent infinite recursion.
  *
@@ -213,20 +195,67 @@ export function shouldAutoExpandInRecent(
 
   // Check if any child (or its descendants) qualifies for expansion
   return children.some((child) => {
-    // In-progress issues always qualify (actively being worked on)
-    if (child.status === 'in_progress') {
+    // Any non-closed child qualifies for expansion
+    if (child.status !== 'closed') {
       return true;
     }
-    // Non-closed issues with valid important priority qualify
-    // Invalid priorities are treated as backlog (don't expand)
-    if (
-      child.status !== 'closed' &&
-      isValidPriority(child.priority) &&
-      child.priority < RECENT_VIEW_PRIORITY_THRESHOLD
-    ) {
-      return true;
-    }
-    // Recurse into child's subtree (passing visited set for cycle detection)
+    // Recurse into child's subtree to find non-closed descendants
     return shouldAutoExpandInRecent(child, allIssues, visited);
   });
+}
+
+/**
+ * Sort issues for Recent view children.
+ * Order: non-closed issues first (by priority), then closed issues (by priority).
+ *
+ * @param issues - Issues to sort
+ * @returns New sorted array (does not mutate input)
+ */
+export function sortChildrenForRecentView<T extends SortableIssue>(issues: T[]): T[] {
+  return [...issues].sort((a, b) => {
+    // Non-closed before closed
+    const aOpen = a.status !== 'closed';
+    const bOpen = b.status !== 'closed';
+    if (aOpen && !bOpen) return -1;
+    if (!aOpen && bOpen) return 1;
+    // Same status group: sort by priority (lower = higher priority)
+    return a.priority - b.priority;
+  });
+}
+
+/**
+ * Minimum interface for issues that can be sorted as root issues in Recent view.
+ * Extends SortableIssue with issue_type for epic detection.
+ */
+export interface RootSortableIssue extends SortableIssue {
+  issue_type: string;
+}
+
+/**
+ * Sort root issues for Recent view.
+ * Epics are sorted by updated_at (most recent first) and placed before non-epics.
+ * Non-epics are sorted by status/priority (non-closed first, then by priority).
+ *
+ * @param issues - Root issues to sort
+ * @returns New sorted array (does not mutate input)
+ */
+export function sortRootIssuesForRecentView<T extends RootSortableIssue>(issues: T[]): T[] {
+  const epics = issues.filter((i) => i.issue_type === 'epic');
+  const nonEpics = issues.filter((i) => i.issue_type !== 'epic');
+
+  // Sort epics by updated_at (most recent first)
+  const sortedEpics = [...epics].sort((a, b) => {
+    const aTime = new Date(a.updated_at).getTime();
+    const bTime = new Date(b.updated_at).getTime();
+    // Treat NaN as 0 (oldest)
+    const safeATime = Number.isNaN(aTime) ? 0 : aTime;
+    const safeBTime = Number.isNaN(bTime) ? 0 : bTime;
+    return safeBTime - safeATime; // Descending (most recent first)
+  });
+
+  // Sort non-epics by status/priority
+  const sortedNonEpics = sortChildrenForRecentView(nonEpics);
+
+  // Combine: epics first (by recency), then non-epics (by status/priority)
+  return [...sortedEpics, ...sortedNonEpics];
 }

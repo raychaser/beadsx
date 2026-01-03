@@ -1,14 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { BeadsIssue } from './core/types';
+import type { BeadsIssue, IssueType } from './core/types';
 import {
   computeIssueDepths,
   DEFAULT_RECENT_WINDOW_MINUTES,
   formatTimeAgo,
   MAX_RECENT_WINDOW_MINUTES,
   MIN_RECENT_WINDOW_MINUTES,
-  RECENT_VIEW_PRIORITY_THRESHOLD,
   shouldAutoExpandInRecent,
+  sortChildrenForRecentView,
   sortIssues,
+  sortRootIssuesForRecentView,
   truncateTitle,
   validateRecentWindowMinutes,
 } from './utils';
@@ -608,13 +609,14 @@ describe('truncateTitle', () => {
 });
 
 describe('shouldAutoExpandInRecent', () => {
-  // Helper to create test issue with specific priority and status
+  // Helper to create test issue with specific status
   function makeIssue(
     id: string,
     opts: {
       parentId?: string;
       status?: 'open' | 'in_progress' | 'blocked' | 'closed';
       priority?: number;
+      issue_type?: IssueType;
     },
   ): BeadsIssue {
     return {
@@ -623,7 +625,7 @@ describe('shouldAutoExpandInRecent', () => {
       description: '',
       status: opts.status ?? 'open',
       priority: opts.priority ?? 2,
-      issue_type: 'task',
+      issue_type: opts.issue_type ?? 'task',
       created_at: '2025-01-15T12:00:00.000Z',
       updated_at: '2025-01-15T12:00:00.000Z',
       closed_at: opts.status === 'closed' ? '2025-01-15T12:00:00.000Z' : null,
@@ -633,154 +635,96 @@ describe('shouldAutoExpandInRecent', () => {
     };
   }
 
-  it('exports RECENT_VIEW_PRIORITY_THRESHOLD as 4', () => {
-    expect(RECENT_VIEW_PRIORITY_THRESHOLD).toBe(4);
-  });
-
   it('returns false when issue has no children', () => {
     const parent = makeIssue('parent', {});
     const allIssues = [parent];
     expect(shouldAutoExpandInRecent(parent, allIssues)).toBe(false);
   });
 
-  it('returns true when direct child is open with priority < 4 (P2)', () => {
+  it('returns true when direct child is open', () => {
     const parent = makeIssue('parent', {});
-    const child = makeIssue('child', { parentId: 'parent', priority: 2 });
+    const child = makeIssue('child', { parentId: 'parent', status: 'open' });
     const allIssues = [parent, child];
     expect(shouldAutoExpandInRecent(parent, allIssues)).toBe(true);
   });
 
-  it('returns true when direct child is open with priority 0 (critical)', () => {
+  it('returns true when direct child is in_progress', () => {
     const parent = makeIssue('parent', {});
-    const child = makeIssue('child', { parentId: 'parent', priority: 0 });
+    const child = makeIssue('child', { parentId: 'parent', status: 'in_progress' });
     const allIssues = [parent, child];
     expect(shouldAutoExpandInRecent(parent, allIssues)).toBe(true);
   });
 
-  it('returns true when direct child is open with priority 3', () => {
+  it('returns true when direct child is blocked', () => {
     const parent = makeIssue('parent', {});
-    const child = makeIssue('child', { parentId: 'parent', priority: 3 });
+    const child = makeIssue('child', { parentId: 'parent', status: 'blocked' });
     const allIssues = [parent, child];
     expect(shouldAutoExpandInRecent(parent, allIssues)).toBe(true);
   });
 
-  it('returns false when direct child is open with priority 4 (backlog)', () => {
+  it('returns false when direct child is closed', () => {
     const parent = makeIssue('parent', {});
-    const child = makeIssue('child', { parentId: 'parent', priority: 4 });
-    const allIssues = [parent, child];
-    expect(shouldAutoExpandInRecent(parent, allIssues)).toBe(false);
-  });
-
-  it('returns false when direct child is open with priority > 4', () => {
-    const parent = makeIssue('parent', {});
-    const child = makeIssue('child', { parentId: 'parent', priority: 5 });
-    const allIssues = [parent, child];
-    expect(shouldAutoExpandInRecent(parent, allIssues)).toBe(false);
-  });
-
-  it('returns false when direct child is closed (regardless of priority)', () => {
-    const parent = makeIssue('parent', {});
-    const child = makeIssue('child', { parentId: 'parent', status: 'closed', priority: 0 });
+    const child = makeIssue('child', { parentId: 'parent', status: 'closed' });
     const allIssues = [parent, child];
     expect(shouldAutoExpandInRecent(parent, allIssues)).toBe(false);
   });
 
   it('returns false when all children are closed', () => {
     const parent = makeIssue('parent', {});
-    const child1 = makeIssue('child1', { parentId: 'parent', status: 'closed', priority: 1 });
-    const child2 = makeIssue('child2', { parentId: 'parent', status: 'closed', priority: 2 });
+    const child1 = makeIssue('child1', { parentId: 'parent', status: 'closed' });
+    const child2 = makeIssue('child2', { parentId: 'parent', status: 'closed' });
     const allIssues = [parent, child1, child2];
     expect(shouldAutoExpandInRecent(parent, allIssues)).toBe(false);
   });
 
-  it('returns true when grandchild is open with priority < 4 (child is closed)', () => {
+  it('returns true when grandchild is open (child is closed)', () => {
     const parent = makeIssue('parent', {});
-    const child = makeIssue('child', { parentId: 'parent', status: 'closed', priority: 4 });
-    const grandchild = makeIssue('grandchild', { parentId: 'child', priority: 1 });
+    const child = makeIssue('child', { parentId: 'parent', status: 'closed' });
+    const grandchild = makeIssue('grandchild', { parentId: 'child', status: 'open' });
     const allIssues = [parent, child, grandchild];
     expect(shouldAutoExpandInRecent(parent, allIssues)).toBe(true);
   });
 
-  it('returns false when grandchild is open with priority 4 (all backlog)', () => {
+  it('returns true when one sibling is closed and another is open', () => {
     const parent = makeIssue('parent', {});
-    const child = makeIssue('child', { parentId: 'parent', priority: 4 });
-    const grandchild = makeIssue('grandchild', { parentId: 'child', priority: 4 });
-    const allIssues = [parent, child, grandchild];
-    expect(shouldAutoExpandInRecent(parent, allIssues)).toBe(false);
-  });
-
-  it('returns true when one sibling is P4 and another is P2', () => {
-    const parent = makeIssue('parent', {});
-    const child1 = makeIssue('child1', { parentId: 'parent', priority: 4 });
-    const child2 = makeIssue('child2', { parentId: 'parent', priority: 2 });
+    const child1 = makeIssue('child1', { parentId: 'parent', status: 'closed' });
+    const child2 = makeIssue('child2', { parentId: 'parent', status: 'open' });
     const allIssues = [parent, child1, child2];
     expect(shouldAutoExpandInRecent(parent, allIssues)).toBe(true);
   });
 
-  it('returns true when deep descendant has important priority', () => {
-    // parent -> child (P4) -> grandchild (P4) -> great-grandchild (P0)
+  it('returns true when deep descendant is open', () => {
+    // parent -> child (closed) -> grandchild (closed) -> great-grandchild (open)
     const parent = makeIssue('parent', {});
-    const child = makeIssue('child', { parentId: 'parent', priority: 4 });
-    const grandchild = makeIssue('grandchild', { parentId: 'child', priority: 4 });
-    const greatGrandchild = makeIssue('great-grandchild', { parentId: 'grandchild', priority: 0 });
+    const child = makeIssue('child', { parentId: 'parent', status: 'closed' });
+    const grandchild = makeIssue('grandchild', { parentId: 'child', status: 'closed' });
+    const greatGrandchild = makeIssue('great-grandchild', {
+      parentId: 'grandchild',
+      status: 'open',
+    });
     const allIssues = [parent, child, grandchild, greatGrandchild];
     expect(shouldAutoExpandInRecent(parent, allIssues)).toBe(true);
   });
 
-  it('returns true when child is in_progress (regardless of priority)', () => {
-    const parent = makeIssue('parent', {});
-    const child = makeIssue('child', { parentId: 'parent', status: 'in_progress', priority: 2 });
-    const allIssues = [parent, child];
-    expect(shouldAutoExpandInRecent(parent, allIssues)).toBe(true);
-  });
-
-  it('returns true when child is in_progress with P4 priority', () => {
-    // in_progress always qualifies, even with backlog priority
-    const parent = makeIssue('parent', {});
-    const child = makeIssue('child', { parentId: 'parent', status: 'in_progress', priority: 4 });
-    const allIssues = [parent, child];
-    expect(shouldAutoExpandInRecent(parent, allIssues)).toBe(true);
-  });
-
-  it('returns true when grandchild is in_progress with P4 priority', () => {
-    // in_progress always qualifies, even deep in tree
-    const parent = makeIssue('parent', {});
-    const child = makeIssue('child', { parentId: 'parent', priority: 4 });
-    const grandchild = makeIssue('grandchild', {
-      parentId: 'child',
-      status: 'in_progress',
-      priority: 4,
-    });
-    const allIssues = [parent, child, grandchild];
-    expect(shouldAutoExpandInRecent(parent, allIssues)).toBe(true);
-  });
-
-  it('handles blocked status as non-closed', () => {
-    const parent = makeIssue('parent', {});
-    const child = makeIssue('child', { parentId: 'parent', status: 'blocked', priority: 2 });
-    const allIssues = [parent, child];
-    expect(shouldAutoExpandInRecent(parent, allIssues)).toBe(true);
-  });
-
-  it('handles complex tree with mixed priorities and statuses', () => {
+  it('handles complex tree with mixed statuses', () => {
     // Tree structure:
     // root
     // ├── branch1 (closed)
-    // │   └── leaf1 (open P4)
-    // └── branch2 (open P4)
-    //     └── leaf2 (open P1)
+    // │   └── leaf1 (closed)
+    // └── branch2 (closed)
+    //     └── leaf2 (open)
     const root = makeIssue('root', {});
     const branch1 = makeIssue('branch1', { parentId: 'root', status: 'closed' });
-    const leaf1 = makeIssue('leaf1', { parentId: 'branch1', priority: 4 });
-    const branch2 = makeIssue('branch2', { parentId: 'root', priority: 4 });
-    const leaf2 = makeIssue('leaf2', { parentId: 'branch2', priority: 1 });
+    const leaf1 = makeIssue('leaf1', { parentId: 'branch1', status: 'closed' });
+    const branch2 = makeIssue('branch2', { parentId: 'root', status: 'closed' });
+    const leaf2 = makeIssue('leaf2', { parentId: 'branch2', status: 'open' });
     const allIssues = [root, branch1, leaf1, branch2, leaf2];
 
-    // Root should expand because branch2 -> leaf2 has P1
+    // Root should expand because branch2 -> leaf2 is open
     expect(shouldAutoExpandInRecent(root, allIssues)).toBe(true);
-    // Branch1 should NOT expand because leaf1 is P4
+    // Branch1 should NOT expand because leaf1 is closed
     expect(shouldAutoExpandInRecent(branch1, allIssues)).toBe(false);
-    // Branch2 should expand because leaf2 is P1
+    // Branch2 should expand because leaf2 is open
     expect(shouldAutoExpandInRecent(branch2, allIssues)).toBe(true);
   });
 
@@ -789,75 +733,268 @@ describe('shouldAutoExpandInRecent', () => {
     expect(shouldAutoExpandInRecent(parent, [])).toBe(false);
   });
 
-  it('handles self-referencing circular parent (A->A)', () => {
+  it('handles self-referencing circular parent (A->A) - open', () => {
     // Issue references itself as parent - should not infinite loop
-    // With P1 priority, it qualifies as important before cycle detection kicks in
-    const selfRef = makeIssue('self', { parentId: 'self', priority: 1 });
+    const selfRef = makeIssue('self', { parentId: 'self', status: 'open' });
     const allIssues = [selfRef];
-    // Returns true because selfRef is its own child with P1 (important priority)
+    // Returns true because selfRef is its own child and is open
     expect(shouldAutoExpandInRecent(selfRef, allIssues)).toBe(true);
   });
 
-  it('handles self-referencing with P4 priority (breaks cycle safely)', () => {
-    // Self-reference with backlog priority - tests that cycle detection works
-    const selfRef = makeIssue('self', { parentId: 'self', priority: 4 });
+  it('handles self-referencing circular parent (A->A) - closed', () => {
+    // Self-reference with closed status - tests that cycle detection works
+    const selfRef = makeIssue('self', { parentId: 'self', status: 'closed' });
     const allIssues = [selfRef];
-    // P4 doesn't qualify, and recursion is blocked by cycle detection
+    // Closed doesn't qualify, and recursion is blocked by cycle detection
     expect(shouldAutoExpandInRecent(selfRef, allIssues)).toBe(false);
   });
 
   it('handles two-node circular reference (A->B->A)', () => {
     // A's parent is B, B's parent is A
-    const issueA = makeIssue('A', { parentId: 'B', priority: 1 });
-    const issueB = makeIssue('B', { parentId: 'A', priority: 1 });
+    const issueA = makeIssue('A', { parentId: 'B', status: 'open' });
+    const issueB = makeIssue('B', { parentId: 'A', status: 'open' });
     const allIssues = [issueA, issueB];
     // Should not infinite loop - cycle detection breaks it
-    expect(shouldAutoExpandInRecent(issueA, allIssues)).toBe(true); // B is child of A with P1
-    expect(shouldAutoExpandInRecent(issueB, allIssues)).toBe(true); // A is child of B with P1
+    expect(shouldAutoExpandInRecent(issueA, allIssues)).toBe(true); // B is child of A and is open
+    expect(shouldAutoExpandInRecent(issueB, allIssues)).toBe(true); // A is child of B and is open
   });
 
-  it('handles three-node circular reference (A->B->C->A)', () => {
+  it('handles three-node circular reference (A->B->C->A) - all closed', () => {
     // A->B->C->A cycle
-    const issueA = makeIssue('A', { parentId: 'C', priority: 4 });
-    const issueB = makeIssue('B', { parentId: 'A', priority: 4 });
-    const issueC = makeIssue('C', { parentId: 'B', priority: 4 });
+    const issueA = makeIssue('A', { parentId: 'C', status: 'closed' });
+    const issueB = makeIssue('B', { parentId: 'A', status: 'closed' });
+    const issueC = makeIssue('C', { parentId: 'B', status: 'closed' });
     const allIssues = [issueA, issueB, issueC];
-    // All P4, should not expand (and should not infinite loop)
+    // All closed, should not expand (and should not infinite loop)
     expect(shouldAutoExpandInRecent(issueA, allIssues)).toBe(false);
   });
 
-  it('handles undefined priority as backlog (no expand)', () => {
+  it('expands regardless of priority when child is open', () => {
+    // Priority no longer affects expansion - only status matters
     const parent = makeIssue('parent', {});
-    const child = makeIssue('child', { parentId: 'parent' });
-    // @ts-expect-error - testing undefined priority
-    child.priority = undefined;
+    const child = makeIssue('child', { parentId: 'parent', status: 'open', priority: 4 });
     const allIssues = [parent, child];
-    expect(shouldAutoExpandInRecent(parent, allIssues)).toBe(false);
-  });
-
-  it('handles NaN priority as backlog (no expand)', () => {
-    const parent = makeIssue('parent', {});
-    const child = makeIssue('child', { parentId: 'parent' });
-    child.priority = Number.NaN;
-    const allIssues = [parent, child];
-    expect(shouldAutoExpandInRecent(parent, allIssues)).toBe(false);
-  });
-
-  it('handles Infinity priority as backlog (no expand)', () => {
-    const parent = makeIssue('parent', {});
-    const child = makeIssue('child', { parentId: 'parent' });
-    child.priority = Number.POSITIVE_INFINITY;
-    const allIssues = [parent, child];
-    expect(shouldAutoExpandInRecent(parent, allIssues)).toBe(false);
-  });
-
-  it('still expands for in_progress even with invalid priority', () => {
-    const parent = makeIssue('parent', {});
-    const child = makeIssue('child', { parentId: 'parent', status: 'in_progress' });
-    // @ts-expect-error - testing undefined priority
-    child.priority = undefined;
-    const allIssues = [parent, child];
-    // in_progress always qualifies, regardless of priority
     expect(shouldAutoExpandInRecent(parent, allIssues)).toBe(true);
+  });
+
+  it('expands regardless of priority when child is in_progress', () => {
+    const parent = makeIssue('parent', {});
+    const child = makeIssue('child', { parentId: 'parent', status: 'in_progress', priority: 100 });
+    const allIssues = [parent, child];
+    expect(shouldAutoExpandInRecent(parent, allIssues)).toBe(true);
+  });
+});
+
+describe('sortChildrenForRecentView', () => {
+  const makeIssue = (
+    overrides: Partial<{
+      id: string;
+      status: string;
+      priority: number;
+      closed_at: string | null;
+      updated_at: string;
+    }>,
+  ) => ({
+    status: 'open',
+    priority: 2,
+    closed_at: null,
+    updated_at: '2025-01-01T00:00:00.000Z',
+    ...overrides,
+  });
+
+  it('places non-closed issues before closed issues', () => {
+    const issues = [
+      makeIssue({ id: 'closed', status: 'closed', priority: 0 }),
+      makeIssue({ id: 'open', status: 'open', priority: 2 }),
+      makeIssue({ id: 'in_progress', status: 'in_progress', priority: 3 }),
+    ];
+    const sorted = sortChildrenForRecentView(issues);
+    expect(sorted.map((i) => i.id)).toEqual(['open', 'in_progress', 'closed']);
+  });
+
+  it('sorts non-closed issues by priority (lower first)', () => {
+    const issues = [
+      makeIssue({ id: 'p3', status: 'open', priority: 3 }),
+      makeIssue({ id: 'p1', status: 'open', priority: 1 }),
+      makeIssue({ id: 'p2', status: 'in_progress', priority: 2 }),
+    ];
+    const sorted = sortChildrenForRecentView(issues);
+    expect(sorted.map((i) => i.id)).toEqual(['p1', 'p2', 'p3']);
+  });
+
+  it('sorts closed issues by priority (lower first)', () => {
+    const issues = [
+      makeIssue({ id: 'c3', status: 'closed', priority: 3 }),
+      makeIssue({ id: 'c1', status: 'closed', priority: 1 }),
+      makeIssue({ id: 'c2', status: 'closed', priority: 2 }),
+    ];
+    const sorted = sortChildrenForRecentView(issues);
+    expect(sorted.map((i) => i.id)).toEqual(['c1', 'c2', 'c3']);
+  });
+
+  it('sorts mixed issues correctly: non-closed by priority, then closed by priority', () => {
+    const issues = [
+      makeIssue({ id: 'closed-p1', status: 'closed', priority: 1 }),
+      makeIssue({ id: 'open-p3', status: 'open', priority: 3 }),
+      makeIssue({ id: 'closed-p0', status: 'closed', priority: 0 }),
+      makeIssue({ id: 'open-p1', status: 'open', priority: 1 }),
+    ];
+    const sorted = sortChildrenForRecentView(issues);
+    expect(sorted.map((i) => i.id)).toEqual(['open-p1', 'open-p3', 'closed-p0', 'closed-p1']);
+  });
+
+  it('does not mutate the input array', () => {
+    const original = [
+      makeIssue({ id: 'closed', status: 'closed' }),
+      makeIssue({ id: 'open', status: 'open' }),
+    ];
+    const originalCopy = [...original];
+    sortChildrenForRecentView(original);
+    expect(original).toEqual(originalCopy);
+  });
+
+  it('handles empty array', () => {
+    const sorted = sortChildrenForRecentView([]);
+    expect(sorted).toEqual([]);
+  });
+
+  it('handles single element array', () => {
+    const issues = [makeIssue({ id: 'only', status: 'open' })];
+    const sorted = sortChildrenForRecentView(issues);
+    expect(sorted).toHaveLength(1);
+    expect(sorted[0].id).toBe('only');
+  });
+
+  it('treats blocked status as non-closed', () => {
+    const issues = [
+      makeIssue({ id: 'closed', status: 'closed', priority: 0 }),
+      makeIssue({ id: 'blocked', status: 'blocked', priority: 2 }),
+    ];
+    const sorted = sortChildrenForRecentView(issues);
+    expect(sorted.map((i) => i.id)).toEqual(['blocked', 'closed']);
+  });
+});
+
+describe('sortRootIssuesForRecentView', () => {
+  const makeIssue = (
+    overrides: Partial<{
+      id: string;
+      status: string;
+      priority: number;
+      closed_at: string | null;
+      updated_at: string;
+      issue_type: string;
+    }>,
+  ) => ({
+    status: 'open',
+    priority: 2,
+    closed_at: null,
+    updated_at: '2025-01-01T00:00:00.000Z',
+    issue_type: 'task',
+    ...overrides,
+  });
+
+  it('places epics before non-epics', () => {
+    const issues = [
+      makeIssue({ id: 'task', issue_type: 'task' }),
+      makeIssue({ id: 'epic', issue_type: 'epic' }),
+      makeIssue({ id: 'bug', issue_type: 'bug' }),
+    ];
+    const sorted = sortRootIssuesForRecentView(issues);
+    expect(sorted[0].id).toBe('epic');
+  });
+
+  it('sorts epics by updated_at (most recent first)', () => {
+    const issues = [
+      makeIssue({ id: 'old-epic', issue_type: 'epic', updated_at: '2025-01-01T00:00:00.000Z' }),
+      makeIssue({ id: 'new-epic', issue_type: 'epic', updated_at: '2025-01-15T00:00:00.000Z' }),
+      makeIssue({ id: 'mid-epic', issue_type: 'epic', updated_at: '2025-01-08T00:00:00.000Z' }),
+    ];
+    const sorted = sortRootIssuesForRecentView(issues);
+    expect(sorted.map((i) => i.id)).toEqual(['new-epic', 'mid-epic', 'old-epic']);
+  });
+
+  it('sorts non-epics by status/priority (non-closed first by priority)', () => {
+    const issues = [
+      makeIssue({ id: 'closed-p0', issue_type: 'task', status: 'closed', priority: 0 }),
+      makeIssue({ id: 'open-p2', issue_type: 'task', status: 'open', priority: 2 }),
+      makeIssue({ id: 'open-p1', issue_type: 'bug', status: 'open', priority: 1 }),
+    ];
+    const sorted = sortRootIssuesForRecentView(issues);
+    expect(sorted.map((i) => i.id)).toEqual(['open-p1', 'open-p2', 'closed-p0']);
+  });
+
+  it('handles mixed epics and non-epics correctly', () => {
+    const issues = [
+      makeIssue({ id: 'task-p1', issue_type: 'task', status: 'open', priority: 1 }),
+      makeIssue({ id: 'old-epic', issue_type: 'epic', updated_at: '2025-01-01T00:00:00.000Z' }),
+      makeIssue({ id: 'new-epic', issue_type: 'epic', updated_at: '2025-01-15T00:00:00.000Z' }),
+      makeIssue({ id: 'task-p0', issue_type: 'task', status: 'open', priority: 0 }),
+    ];
+    const sorted = sortRootIssuesForRecentView(issues);
+    // Epics first (by recency), then non-epics (by status/priority)
+    expect(sorted.map((i) => i.id)).toEqual(['new-epic', 'old-epic', 'task-p0', 'task-p1']);
+  });
+
+  it('does not mutate the input array', () => {
+    const original = [
+      makeIssue({ id: 'epic', issue_type: 'epic' }),
+      makeIssue({ id: 'task', issue_type: 'task' }),
+    ];
+    const originalCopy = [...original];
+    sortRootIssuesForRecentView(original);
+    expect(original).toEqual(originalCopy);
+  });
+
+  it('handles empty array', () => {
+    const sorted = sortRootIssuesForRecentView([]);
+    expect(sorted).toEqual([]);
+  });
+
+  it('handles array with only epics', () => {
+    const issues = [
+      makeIssue({ id: 'epic1', issue_type: 'epic', updated_at: '2025-01-01T00:00:00.000Z' }),
+      makeIssue({ id: 'epic2', issue_type: 'epic', updated_at: '2025-01-15T00:00:00.000Z' }),
+    ];
+    const sorted = sortRootIssuesForRecentView(issues);
+    expect(sorted.map((i) => i.id)).toEqual(['epic2', 'epic1']);
+  });
+
+  it('handles array with only non-epics', () => {
+    const issues = [
+      makeIssue({ id: 'task-p2', issue_type: 'task', status: 'open', priority: 2 }),
+      makeIssue({ id: 'task-p1', issue_type: 'task', status: 'open', priority: 1 }),
+    ];
+    const sorted = sortRootIssuesForRecentView(issues);
+    expect(sorted.map((i) => i.id)).toEqual(['task-p1', 'task-p2']);
+  });
+
+  it('treats invalid updated_at as oldest for epics', () => {
+    const issues = [
+      makeIssue({ id: 'invalid-epic', issue_type: 'epic', updated_at: 'invalid-date' }),
+      makeIssue({ id: 'valid-epic', issue_type: 'epic', updated_at: '2025-01-15T00:00:00.000Z' }),
+    ];
+    const sorted = sortRootIssuesForRecentView(issues);
+    expect(sorted.map((i) => i.id)).toEqual(['valid-epic', 'invalid-epic']);
+  });
+
+  it('handles epic status correctly (status does not affect epic ordering)', () => {
+    const issues = [
+      makeIssue({
+        id: 'closed-epic',
+        issue_type: 'epic',
+        status: 'closed',
+        updated_at: '2025-01-15T00:00:00.000Z',
+      }),
+      makeIssue({
+        id: 'open-epic',
+        issue_type: 'epic',
+        status: 'open',
+        updated_at: '2025-01-01T00:00:00.000Z',
+      }),
+    ];
+    const sorted = sortRootIssuesForRecentView(issues);
+    // Epics sorted by updated_at, not status
+    expect(sorted.map((i) => i.id)).toEqual(['closed-epic', 'open-epic']);
   });
 });
