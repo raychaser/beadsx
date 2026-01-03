@@ -227,6 +227,9 @@ async function refreshBeadsXPanel(p: Page): Promise<void> {
 // ============================================
 
 test.beforeAll(async () => {
+  // Increase timeout for beforeAll - VSCode download (149MB) + launch can take >60s
+  test.setTimeout(180000); // 3 minutes
+
   // Create temp directories
   fs.mkdirSync(workspacePath, { recursive: true });
   fs.mkdirSync(userDataDir, { recursive: true });
