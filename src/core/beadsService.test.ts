@@ -24,7 +24,13 @@ import {
 // Track call count to return different values for different calls
 let execFileCallCount = 0;
 
-// Helper to mock execFile for promisify - callback is the last argument
+/**
+ * Helper to mock execFile for promisify - callback is the last argument.
+ * beadsx-912: Mock responses array is consumed in order:
+ * - First response: bd --version check (findBdExecutable validates bd exists)
+ * - Second response: actual bd command execution (export, ready, etc.)
+ * - For fallback tests: multiple responses simulate PATH lookup failure → fallback success
+ */
 function mockExecFileWithResponses(
   responses: Array<{ stdout: string; stderr?: string } | Error>,
 ): void {
@@ -37,6 +43,7 @@ function mockExecFileWithResponses(
       _options: unknown,
       callback: (error: Error | null, result?: { stdout: string; stderr: string }) => void,
     ) => {
+      // beadsx-912: Each call consumes next response; last response repeats if array exhausted
       const response = responses[execFileCallCount] || responses[responses.length - 1];
       execFileCallCount++;
 
@@ -70,6 +77,7 @@ describe('exportIssuesWithDeps - tombstone filtering', () => {
       '{"id":"issue-2","title":"Tombstone 2","status":"tombstone","priority":2,"issue_type":"task","created_at":"2025-01-01T00:00:00Z","updated_at":"2025-01-01T00:00:00Z"}',
     ].join('\n');
 
+    // beadsx-912: Response order: [0] version check for findBdExecutable, [1] export command output
     mockExecFileWithResponses([{ stdout: 'bd version 1.0.0' }, { stdout: jsonlOutput }]);
 
     const result = await exportIssuesWithDeps('/test/workspace');
@@ -90,6 +98,7 @@ describe('exportIssuesWithDeps - tombstone filtering', () => {
       '{"id":"active-3","title":"In Progress Issue","status":"in_progress","priority":1,"issue_type":"bug","created_at":"2025-01-01T00:00:00Z","updated_at":"2025-01-01T00:00:00Z"}',
     ].join('\n');
 
+    // beadsx-912: Response order: [0] version check for findBdExecutable, [1] export command output
     // beforeEach clears all caches, so we need both version check and export responses
     mockExecFileWithResponses([{ stdout: 'bd version 1.0.0' }, { stdout: jsonlOutput }]);
 
@@ -121,7 +130,12 @@ describe('formatBdError - exit code handling', () => {
   });
 
   it('provides actionable message for non-zero exit codes', async () => {
+    // beadsx-900: Enable fallback so non-ENOENT errors try fallback paths instead of throwing
+    configure({ allowFallbackOnFailure: true });
+
     const exitCodeError = new Error('Command failed with exit code 1');
+    // beadsx-912: All responses are errors - first tries PATH lookup, then fallback paths
+    // 4 errors needed: PATH lookup + 3 fallback paths (all fail to trigger error result)
     mockExecFileWithResponses([exitCodeError, exitCodeError, exitCodeError, exitCodeError]);
 
     const result = await exportIssuesWithDeps('/test/workspace');
@@ -134,6 +148,7 @@ describe('formatBdError - exit code handling', () => {
   it('provides specific message for ENOENT errors', async () => {
     const enoentError = new Error('spawn bd ENOENT') as NodeJS.ErrnoException;
     enoentError.code = 'ENOENT';
+    // beadsx-912: All responses are ENOENT - PATH lookup fails, then 3 fallback paths also fail
     mockExecFileWithResponses([enoentError, enoentError, enoentError, enoentError]);
 
     const result = await exportIssuesWithDeps('/test/workspace');
@@ -141,5 +156,89 @@ describe('formatBdError - exit code handling', () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain('not found');
     expect(result.error).toContain('PATH');
+  });
+});
+
+// beadsx-908: Test for EACCES warning path in findBdExecutable
+describe('findBdExecutable - EACCES handling', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    clearBeadsInitializedCache();
+    clearBdPathCache();
+    configure({});
+    vi.mocked(access).mockResolvedValue(undefined);
+  });
+
+  it('logs EACCES at debug level when configured path has permission issues', async () => {
+    // Configure an absolute path that will trigger the EACCES path
+    configure({ commandPath: '/usr/local/bin/bd' });
+
+    // Mock access check fails with EACCES (permission denied)
+    const eaccesError = new Error('EACCES: permission denied') as NodeJS.ErrnoException;
+    eaccesError.code = 'EACCES';
+    vi.mocked(access).mockRejectedValueOnce(eaccesError);
+
+    // beadsx-912: First mock is for .beads check (success), second is for path validation (EACCES)
+    // Then execFile will be called - mock it to succeed so we can verify the path was still used
+    mockExecFileWithResponses([{ stdout: 'bd version 1.0.0' }, { stdout: '' }]);
+
+    // Call a function that triggers findBdExecutable - exportIssuesWithDeps will do this
+    const result = await exportIssuesWithDeps('/test/workspace');
+
+    // The function should still work (path is returned for execution even if access check fails)
+    // beadsx-901 changed this from warn() to log() at debug level
+    expect(result.success).toBe(true);
+  });
+});
+
+// beadsx-909: Behavioral test for clearBdPathCache
+describe('clearBdPathCache - behavioral verification', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    clearBeadsInitializedCache();
+    clearBdPathCache();
+    configure({});
+    vi.mocked(access).mockResolvedValue(undefined);
+  });
+
+  it('forces re-discovery of bd path after cache clear', async () => {
+    // First call - bd is found and cached
+    mockExecFileWithResponses([
+      { stdout: 'bd version 1.0.0' }, // version check
+      { stdout: '' }, // export command
+    ]);
+
+    await exportIssuesWithDeps('/test/workspace');
+    const firstCallCount = vi.mocked(execFile).mock.calls.length;
+
+    // Second call - should use cached path (no additional version check)
+    vi.mocked(execFile).mockClear();
+    mockExecFileWithResponses([
+      { stdout: '' }, // only export command (path is cached)
+    ]);
+
+    await exportIssuesWithDeps('/test/workspace');
+    const secondCallCount = vi.mocked(execFile).mock.calls.length;
+
+    // Clear the cache
+    clearBdPathCache();
+
+    // Third call - should re-discover bd (version check again)
+    vi.mocked(execFile).mockClear();
+    mockExecFileWithResponses([
+      { stdout: 'bd version 1.0.0' }, // version check (re-discovery)
+      { stdout: '' }, // export command
+    ]);
+
+    await exportIssuesWithDeps('/test/workspace');
+    const thirdCallCount = vi.mocked(execFile).mock.calls.length;
+
+    // After cache clear, we should see version check happening again
+    // First call: 2 calls (version + export)
+    expect(firstCallCount).toBe(2);
+    // Second call: 1 call (export only, path cached)
+    expect(secondCallCount).toBe(1);
+    // Third call: 2 calls (version + export, cache was cleared)
+    expect(thirdCallCount).toBe(2);
   });
 });

@@ -37,6 +37,13 @@ export interface BeadsConfig {
   autoExpandOpen?: boolean;
   recentWindowMinutes?: number;
   useJsonlMode?: boolean; // When true, adds --no-db to all bd commands
+  /**
+   * When true, allows fallback to common installation paths if the configured
+   * bd command fails (not just "not found" but also crashes/errors).
+   * Default: false - configured command failures will error instead of using fallback.
+   * Set to true if you want automatic fallback even when your configured bd is broken.
+   */
+  allowFallbackOnFailure?: boolean;
 }
 
 export interface Logger {
@@ -57,13 +64,15 @@ export type SortMode = 'default' | 'recent';
  * Any type with these fields can be sorted using sortIssues().
  *
  * @remarks
- * - `status` uses `IssueStatus | string` for compatibility with external data
+ * - `status` uses strict `IssueStatus` type (beadsx-911: removed `| string` widening)
  * - `priority` uses lower-is-higher ordering (0 = critical, 4 = backlog)
  * - `closed_at` should be set when `status === 'closed'`
  * - `updated_at` and `closed_at` should be ISO 8601 date strings; invalid dates are treated as oldest
+ *
+ * For unvalidated external data, parse and validate status before creating SortableIssue.
  */
 export interface SortableIssue {
-  status: IssueStatus | string;
+  status: IssueStatus;
   priority: number;
   closed_at: string | null;
   updated_at: string;

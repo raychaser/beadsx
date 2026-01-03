@@ -76,9 +76,16 @@ function warn(message: string): void {
 
 /**
  * Type for Node.js errors with a code property (ENOENT, EACCES, etc.)
+ * beadsx-910: This interface aligns with NodeJS.ErrnoException but is defined
+ * locally to avoid @types/node dependency in the core module. If full ErrnoException
+ * properties (syscall, errno, path) are needed, import from @types/node instead.
  */
 interface NodeJSError extends Error {
   code: string;
+  // Optional properties from NodeJS.ErrnoException for future use
+  syscall?: string;
+  errno?: number;
+  path?: string;
 }
 
 /**
@@ -102,7 +109,7 @@ function isNotFoundError(error: unknown): boolean {
 
 /**
  * Format bd command errors with user-friendly messages.
- * Handles common error types: maxBuffer exceeded, ENOENT, ETIMEDOUT, EACCES, exit codes.
+ * Handles common error types: maxBuffer exceeded, ENOENT, ETIMEDOUT, EACCES, EPERM, EAGAIN, exit codes.
  */
 function formatBdError(error: unknown, maxBufferMsg: string): string {
   if (error instanceof Error) {
@@ -118,6 +125,13 @@ function formatBdError(error: unknown, maxBufferMsg: string): string {
     if (hasErrorCode(error, 'EACCES')) {
       return 'Cannot execute bd command: permission denied. Check file permissions.';
     }
+    // beadsx-905: Handle additional common error codes
+    if (hasErrorCode(error, 'EPERM')) {
+      return 'Cannot execute bd command: operation not permitted. Check system permissions.';
+    }
+    if (hasErrorCode(error, 'EAGAIN')) {
+      return 'bd command failed due to resource constraints. Try again in a moment.';
+    }
     // Handle non-zero exit codes with actionable guidance
     const exitCodeMatch = error.message.match(EXIT_CODE_REGEX);
     if (exitCodeMatch) {
@@ -130,35 +144,61 @@ function formatBdError(error: unknown, maxBufferMsg: string): string {
 }
 
 /**
- * Check if beads is initialized in the given workspace
- * Returns true if .beads/ directory exists
- * Uses async fs access with caching to avoid blocking the UI thread
+ * Result of checking beads initialization status.
+ * Distinguishes between "not initialized" (ENOENT) and "access error" (EACCES, etc.)
+ */
+export type BeadsInitStatus = 'initialized' | 'not-initialized' | 'access-error';
+
+/**
+ * Check if beads is initialized in the given workspace.
+ * Returns structured result to distinguish between different failure modes:
+ * - 'initialized': .beads directory exists and is accessible
+ * - 'not-initialized': .beads directory does not exist (ENOENT)
+ * - 'access-error': .beads exists but cannot be accessed (permissions, etc.)
+ *
+ * Uses async fs access with caching (only caches successful checks and ENOENT).
  */
 export async function isBeadsInitialized(workspaceRoot: string): Promise<boolean> {
-  // Return cached result if available
+  const status = await getBeadsInitStatus(workspaceRoot);
+  return status === 'initialized';
+}
+
+/**
+ * Get detailed beads initialization status for the workspace.
+ * Use this when you need to distinguish between "not initialized" and "access error".
+ */
+export async function getBeadsInitStatus(workspaceRoot: string): Promise<BeadsInitStatus> {
+  // Return cached result if available (only true/false, not access-error which shouldn't be cached)
   const cached = beadsInitializedCache.get(workspaceRoot);
   if (cached !== undefined) {
-    return cached;
+    return cached ? 'initialized' : 'not-initialized';
   }
 
   const beadsDir = path.join(workspaceRoot, '.beads');
   try {
     await access(beadsDir);
     beadsInitializedCache.set(workspaceRoot, true);
-    return true;
+    return 'initialized';
   } catch (error: unknown) {
     // ENOENT means directory doesn't exist - expected case, cache the result
     if (hasErrorCode(error, 'ENOENT')) {
       beadsInitializedCache.set(workspaceRoot, false);
-      return false;
+      return 'not-initialized';
     }
-    // Other errors (permission denied, etc.) - warn user, don't cache to allow retry
-    const errorCode =
-      error instanceof Error && 'code' in error ? (error as { code: string }).code : 'unknown';
-    warn(
-      `Cannot access .beads directory (${errorCode}): ${error instanceof Error ? error.message : error}`,
-    );
-    return false;
+    // beadsx-902: Other errors (permission denied, etc.) - warn user with actionable guidance
+    // Don't cache to allow retry after user fixes the issue
+    if (hasErrorCode(error, 'EACCES')) {
+      warn(
+        `Cannot access .beads directory: permission denied. Check folder permissions for: ${beadsDir}`,
+      );
+    } else {
+      const errorCode =
+        error instanceof Error && 'code' in error ? (error as { code: string }).code : 'unknown';
+      warn(
+        `Cannot access .beads directory (${errorCode}): ${error instanceof Error ? error.message : error}`,
+      );
+    }
+    return 'access-error';
   }
 }
 
@@ -208,16 +248,16 @@ async function findBdExecutable(): Promise<string> {
       await access(cmd, fsConstants.X_OK);
       return cmd;
     } catch (error) {
-      // Provide specific guidance for common errors
+      // beadsx-901: Log validation issues at debug level only.
+      // Don't warn here - let execFile provide the detailed error to avoid double-messaging.
+      // The error at execution time will be more accurate and include actual failure details.
       if (hasErrorCode(error, 'EACCES')) {
-        warn(
-          `Configured bd path ${cmd} exists but cannot be executed. Check file permissions with: chmod +x ${cmd}`,
-        );
+        log(`Configured bd path ${cmd} failed permission check (will try execution anyway)`);
       } else if (isNotFoundError(error)) {
-        warn(`Configured bd path ${cmd} does not exist. Check your beadsx.commandPath setting.`);
+        log(`Configured bd path ${cmd} not found (will try execution anyway)`);
       } else {
         const errMsg = error instanceof Error ? error.message : String(error);
-        warn(`Configured bd path ${cmd} cannot be accessed: ${errMsg}`);
+        log(`Configured bd path ${cmd} access check failed: ${errMsg} (will try execution anyway)`);
       }
       // Return the path anyway - will fail with error at execution time
       // This allows the caller to get a more detailed error from execFile
@@ -238,8 +278,18 @@ async function findBdExecutable(): Promise<string> {
     if (isNotFoundError(error)) {
       log(`bd not found in PATH (${cmd}), checking common installation paths...`);
     } else {
-      // Non-ENOENT errors mean the command exists but is broken
+      // beadsx-900: Non-ENOENT errors mean the command exists but is broken.
+      // By default, don't silently fall back to a different binary - this could cause
+      // confusion if users think they're using their configured bd but are actually
+      // using a different installation with different configuration/version.
       configuredCommandFailed = true;
+      if (!config.allowFallbackOnFailure) {
+        // Throw error instead of falling back - user must explicitly enable fallback
+        throw new Error(
+          `Configured bd command (${cmd}) failed: ${errMsg}. ` +
+            `Fix the binary or set allowFallbackOnFailure: true to use fallback paths.`,
+        );
+      }
       warn(`bd found but failed to run (${cmd}): ${errMsg}. Trying fallback paths...`);
     }
   }
@@ -297,12 +347,14 @@ async function getResolvedBdCommand(): Promise<string> {
 /**
  * Build command arguments for bd, prepending --no-db when useJsonlMode is enabled.
  * This ensures consistent handling of JSONL mode across all bd command invocations.
+ *
+ * @throws {Error} If args is not an array (indicates programming error in calling code)
  */
 export function buildBdArgs(args: string[]): string[] {
-  // Defensive guard: ensure args is an array to prevent runtime errors from spread operator
+  // beadsx-906: Throw for non-array input instead of silently recovering.
+  // This is a programming error in calling code and should fail loudly.
   if (!Array.isArray(args)) {
-    warn('buildBdArgs called with non-array argument, using empty array');
-    return config.useJsonlMode ? ['--no-db'] : [];
+    throw new Error(`buildBdArgs: args must be an array, received ${typeof args}`);
   }
   if (config.useJsonlMode) {
     return ['--no-db', ...args];
@@ -362,21 +414,33 @@ export async function listReadyIssues(workspaceRoot: string): Promise<BeadsResul
   try {
     const result = JSON.parse(stdout);
 
+    let issues: BeadsIssue[];
     if (result && Array.isArray(result.issues)) {
-      return { success: true, data: result.issues };
+      issues = result.issues;
+    } else if (Array.isArray(result)) {
+      issues = result;
+    } else {
+      log(`Warning: bd ready returned unexpected format: ${typeof result}`);
+      return { success: true, data: [] };
     }
 
-    if (Array.isArray(result)) {
-      return { success: true, data: result };
+    // beadsx-903: Filter tombstones for consistency with exportIssuesWithDeps.
+    // While bd ready shouldn't return tombstones, this defensive check ensures
+    // soft-deleted issues never appear in any view regardless of bd behavior.
+    const activeIssues = issues.filter((issue) => issue.status !== 'tombstone');
+    if (activeIssues.length < issues.length) {
+      log(
+        `Filtered ${issues.length - activeIssues.length} tombstone(s) from ready issues (bd ready returned tombstones unexpectedly)`,
+      );
     }
 
-    log(`Warning: bd ready returned unexpected format: ${typeof result}`);
-    return { success: true, data: [] };
+    return { success: true, data: activeIssues };
   } catch (error) {
-    // Include truncated content to help debugging (matching exportIssuesWithDeps behavior)
+    // beadsx-907: Include error type/message details for easier debugging
+    const errorDetail = error instanceof SyntaxError ? error.message : String(error);
     const truncatedOutput = stdout.length > 200 ? `${stdout.substring(0, 200)}...` : stdout;
     const errorMsg = `Failed to parse ready issues. Output may be corrupted.`;
-    log(`Error: Failed to parse 'bd ready' output: ${error}. Content: "${truncatedOutput}"`);
+    log(`Error: Failed to parse 'bd ready' output: ${errorDetail}. Content: "${truncatedOutput}"`);
     warn(errorMsg);
     return { success: false, data: [], error: errorMsg };
   }
@@ -459,9 +523,10 @@ export async function exportIssuesWithDeps(
       }
       issues.push(issue);
     } catch (error) {
-      // Include truncated line content to help debugging
+      // beadsx-907: Include error type/message details for easier debugging
+      const errorDetail = error instanceof SyntaxError ? error.message : String(error);
       const truncatedContent = line.length > 100 ? `${line.substring(0, 100)}...` : line;
-      log(`Failed to parse line ${i}: ${error}. Content: "${truncatedContent}"`);
+      log(`Failed to parse line ${i}: ${errorDetail}. Content: "${truncatedContent}"`);
       parseErrors++;
     }
   }
@@ -582,10 +647,25 @@ export function getAllAncestors(issue: BeadsIssue, allIssues: BeadsIssue[]): Bea
  * Get root issues (issues with no parent OR whose parent is not in the list)
  */
 export function getRootIssues(issues: BeadsIssue[]): BeadsIssue[] {
-  return issues.filter((issue) => {
+  const orphanedIds: string[] = [];
+  const roots = issues.filter((issue) => {
     if (!issue.parentId) return true;
-    // If parent was filtered out, treat this issue as a root
+    // If parent was filtered out (e.g., tombstone), treat this issue as a root
     const parentInList = issues.some((i) => i.id === issue.parentId);
-    return !parentInList;
+    if (!parentInList) {
+      orphanedIds.push(issue.id);
+      return true;
+    }
+    return false;
   });
+
+  // beadsx-904: Log when children are promoted to root due to missing parent
+  // This helps users understand why issues suddenly appear at root level
+  if (orphanedIds.length > 0) {
+    log(
+      `Promoted ${orphanedIds.length} issue(s) to root level (parent not in list, may be tombstone): ${orphanedIds.join(', ')}`,
+    );
+  }
+
+  return roots;
 }
