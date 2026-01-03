@@ -19,6 +19,8 @@ import {
   clearBeadsInitializedCache,
   configure,
   exportIssuesWithDeps,
+  getBeadsInitStatus,
+  listReadyIssues,
 } from './beadsService';
 
 // Track call count to return different values for different calls
@@ -240,5 +242,183 @@ describe('clearBdPathCache - behavioral verification', () => {
     expect(secondCallCount).toBe(1);
     // Third call: 2 calls (version + export, cache was cleared)
     expect(thirdCallCount).toBe(2);
+  });
+});
+
+// beadsx-916: Test listReadyIssues tombstone filtering
+describe('listReadyIssues - tombstone filtering', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    clearBeadsInitializedCache();
+    clearBdPathCache();
+    configure({});
+    vi.mocked(access).mockResolvedValue(undefined);
+  });
+
+  it('filters tombstones if bd ready unexpectedly returns them', async () => {
+    // bd ready normally shouldn't return tombstones, but defensive filtering ensures they never appear
+    const readyOutput = JSON.stringify({
+      issues: [
+        {
+          id: 'ready-1',
+          title: 'Ready Issue',
+          status: 'open',
+          priority: 2,
+          issue_type: 'task',
+          created_at: '2025-01-01T00:00:00Z',
+          updated_at: '2025-01-01T00:00:00Z',
+        },
+        {
+          id: 'tombstone-1',
+          title: 'Should Be Filtered',
+          status: 'tombstone',
+          priority: 2,
+          issue_type: 'task',
+          created_at: '2025-01-01T00:00:00Z',
+          updated_at: '2025-01-01T00:00:00Z',
+        },
+      ],
+    });
+
+    mockExecFileWithResponses([{ stdout: 'bd version 1.0.0' }, { stdout: readyOutput }]);
+
+    const result = await listReadyIssues('/test/workspace');
+
+    expect(result.success).toBe(true);
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0].id).toBe('ready-1');
+    expect(result.data.some((i) => i.status === 'tombstone')).toBe(false);
+  });
+
+  // beadsx-914: Test that unexpected format returns success:false
+  it('returns success:false when bd ready returns unexpected format', async () => {
+    // Simulate bd ready returning a non-array, non-{issues:[]} response
+    const unexpectedOutput = JSON.stringify({ data: 'unexpected format' });
+
+    mockExecFileWithResponses([{ stdout: 'bd version 1.0.0' }, { stdout: unexpectedOutput }]);
+
+    const result = await listReadyIssues('/test/workspace');
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('unexpected format');
+    expect(result.data).toEqual([]);
+  });
+});
+
+// beadsx-917: Direct tests for getBeadsInitStatus
+describe('getBeadsInitStatus - detailed status', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    clearBeadsInitializedCache();
+  });
+
+  it('returns initialized when .beads directory exists', async () => {
+    vi.mocked(access).mockResolvedValue(undefined);
+
+    const status = await getBeadsInitStatus('/test/workspace');
+
+    expect(status).toBe('initialized');
+  });
+
+  it('returns not-initialized for ENOENT (directory does not exist)', async () => {
+    const enoentError = new Error('ENOENT') as NodeJS.ErrnoException;
+    enoentError.code = 'ENOENT';
+    vi.mocked(access).mockRejectedValue(enoentError);
+
+    const status = await getBeadsInitStatus('/test/workspace');
+
+    expect(status).toBe('not-initialized');
+  });
+
+  it('returns access-error for EACCES (permission denied)', async () => {
+    const eaccesError = new Error('EACCES') as NodeJS.ErrnoException;
+    eaccesError.code = 'EACCES';
+    vi.mocked(access).mockRejectedValue(eaccesError);
+
+    const status = await getBeadsInitStatus('/test/workspace');
+
+    expect(status).toBe('access-error');
+  });
+
+  it('returns access-error for other errors', async () => {
+    const otherError = new Error('Unknown error') as NodeJS.ErrnoException;
+    otherError.code = 'EIO';
+    vi.mocked(access).mockRejectedValue(otherError);
+
+    const status = await getBeadsInitStatus('/test/workspace');
+
+    expect(status).toBe('access-error');
+  });
+
+  it('caches initialized and not-initialized but not access-error', async () => {
+    // First call - access-error (should NOT be cached)
+    const eaccesError = new Error('EACCES') as NodeJS.ErrnoException;
+    eaccesError.code = 'EACCES';
+    vi.mocked(access).mockRejectedValueOnce(eaccesError);
+
+    const status1 = await getBeadsInitStatus('/test/workspace');
+    expect(status1).toBe('access-error');
+
+    // Second call - now succeeds (permission fixed)
+    vi.mocked(access).mockResolvedValueOnce(undefined);
+
+    const status2 = await getBeadsInitStatus('/test/workspace');
+    expect(status2).toBe('initialized');
+
+    // Verify access was called twice (access-error was not cached)
+    expect(vi.mocked(access)).toHaveBeenCalledTimes(2);
+  });
+});
+
+// beadsx-919: Test that default allowFallbackOnFailure throws error
+describe('findBdExecutable - allowFallbackOnFailure default behavior', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    clearBeadsInitializedCache();
+    clearBdPathCache();
+    configure({}); // Default config - allowFallbackOnFailure is undefined/false
+    vi.mocked(access).mockResolvedValue(undefined);
+  });
+
+  it('throws error when configured command fails and allowFallbackOnFailure is false', async () => {
+    // Non-ENOENT error means command exists but is broken
+    const crashError = new Error('Segmentation fault');
+    mockExecFileWithResponses([crashError]);
+
+    // beadsx-919: Should throw, not return BeadsResult, when allowFallbackOnFailure is false
+    await expect(exportIssuesWithDeps('/test/workspace')).rejects.toThrow(/allowFallbackOnFailure/);
+  });
+});
+
+// beadsx-923: Test EPERM/EAGAIN error message formatting
+describe('formatBdError - EPERM/EAGAIN handling', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    clearBeadsInitializedCache();
+    clearBdPathCache();
+    configure({ allowFallbackOnFailure: true });
+    vi.mocked(access).mockResolvedValue(undefined);
+  });
+
+  it('provides specific message for EPERM errors', async () => {
+    const epermError = new Error('Operation not permitted') as NodeJS.ErrnoException;
+    epermError.code = 'EPERM';
+    mockExecFileWithResponses([epermError, epermError, epermError, epermError]);
+
+    const result = await exportIssuesWithDeps('/test/workspace');
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('operation not permitted');
+  });
+
+  it('provides specific message for EAGAIN errors', async () => {
+    const eagainError = new Error('Resource temporarily unavailable') as NodeJS.ErrnoException;
+    eagainError.code = 'EAGAIN';
+    mockExecFileWithResponses([eagainError, eagainError, eagainError, eagainError]);
+
+    const result = await exportIssuesWithDeps('/test/workspace');
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('resource constraints');
   });
 });

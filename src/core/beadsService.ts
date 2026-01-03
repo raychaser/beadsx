@@ -109,7 +109,7 @@ function isNotFoundError(error: unknown): boolean {
 
 /**
  * Format bd command errors with user-friendly messages.
- * Handles common error types: maxBuffer exceeded, ENOENT, ETIMEDOUT, EACCES, EPERM, EAGAIN, exit codes.
+ * Handles common error types: maxBuffer exceeded, ENOENT, ETIMEDOUT, EACCES, EPERM, EAGAIN, EMFILE, ENFILE, exit codes.
  */
 function formatBdError(error: unknown, maxBufferMsg: string): string {
   if (error instanceof Error) {
@@ -131,6 +131,13 @@ function formatBdError(error: unknown, maxBufferMsg: string): string {
     }
     if (hasErrorCode(error, 'EAGAIN')) {
       return 'bd command failed due to resource constraints. Try again in a moment.';
+    }
+    // beadsx-920: Handle file descriptor limit errors
+    if (hasErrorCode(error, 'EMFILE')) {
+      return 'Too many open files. Close some applications or increase ulimit.';
+    }
+    if (hasErrorCode(error, 'ENFILE')) {
+      return 'System file table overflow. Close some applications or contact system administrator.';
     }
     // Handle non-zero exit codes with actionable guidance
     const exitCodeMatch = error.message.match(EXIT_CODE_REGEX);
@@ -420,8 +427,11 @@ export async function listReadyIssues(workspaceRoot: string): Promise<BeadsResul
     } else if (Array.isArray(result)) {
       issues = result;
     } else {
-      log(`Warning: bd ready returned unexpected format: ${typeof result}`);
-      return { success: true, data: [] };
+      // beadsx-914: Return success:false for unexpected format to surface compatibility issues
+      const errorMsg = `bd ready returned unexpected format (${typeof result}). Expected array or {issues: []}.`;
+      log(`Warning: ${errorMsg}`);
+      warn(errorMsg);
+      return { success: false, data: [], error: errorMsg };
     }
 
     // beadsx-903: Filter tombstones for consistency with exportIssuesWithDeps.
@@ -507,7 +517,7 @@ export async function exportIssuesWithDeps(
   log(`parsing ${lines.length} lines`);
 
   const issues: BeadsIssue[] = [];
-  let parseErrors = 0;
+  const failedLines: number[] = []; // beadsx-921: Track failing line numbers
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     try {
@@ -526,15 +536,20 @@ export async function exportIssuesWithDeps(
       // beadsx-907: Include error type/message details for easier debugging
       const errorDetail = error instanceof SyntaxError ? error.message : String(error);
       const truncatedContent = line.length > 100 ? `${line.substring(0, 100)}...` : line;
-      log(`Failed to parse line ${i}: ${errorDetail}. Content: "${truncatedContent}"`);
-      parseErrors++;
+      log(`Failed to parse line ${i + 1}: ${errorDetail}. Content: "${truncatedContent}"`);
+      failedLines.push(i + 1); // 1-indexed for user display
     }
   }
 
   // Warn user about parse failures and return partial success as failure
-  if (parseErrors > 0) {
-    const errorMsg = `${parseErrors} issue(s) failed to load due to parsing errors.`;
-    log(`Warning: ${parseErrors}/${lines.length} lines failed to parse`);
+  if (failedLines.length > 0) {
+    // beadsx-921: Include first few failing line numbers in user warning
+    const lineInfo =
+      failedLines.length <= 5
+        ? `lines ${failedLines.join(', ')}`
+        : `lines ${failedLines.slice(0, 5).join(', ')}... and ${failedLines.length - 5} more`;
+    const errorMsg = `${failedLines.length} issue(s) failed to load (${lineInfo}). Enable debug logging for details.`;
+    log(`Warning: ${failedLines.length}/${lines.length} lines failed to parse`);
     warn(errorMsg);
     // Return partial data with error - callers can still use data but know it's incomplete
     return { success: false, data: issues, error: errorMsg };
@@ -659,11 +674,11 @@ export function getRootIssues(issues: BeadsIssue[]): BeadsIssue[] {
     return false;
   });
 
-  // beadsx-904: Log when children are promoted to root due to missing parent
-  // This helps users understand why issues suddenly appear at root level
+  // beadsx-904, beadsx-922: Warn when children are promoted to root due to missing parent
+  // Users should know why issues suddenly appear at root level (warn is visible, log is debug-only)
   if (orphanedIds.length > 0) {
-    log(
-      `Promoted ${orphanedIds.length} issue(s) to root level (parent not in list, may be tombstone): ${orphanedIds.join(', ')}`,
+    warn(
+      `${orphanedIds.length} issue(s) promoted to root level (parent not in list, may be tombstone): ${orphanedIds.join(', ')}`,
     );
   }
 
