@@ -379,6 +379,17 @@ describe('sortIssues', () => {
     expect(sorted.map((i) => i.id)).toEqual(['valid', 'inf']);
   });
 
+  it('treats -Infinity priority as lowest priority for open issues', () => {
+    const issues = [
+      makeIssue({ status: 'open', priority: -Infinity, id: 'neg-inf' }),
+      makeIssue({ status: 'open', priority: 2, id: 'valid' }),
+    ];
+    const sorted = sortIssues(issues);
+    // -Infinity is not finite, so Number.isFinite(-Infinity) === false
+    // It gets treated as MAX_SAFE_INTEGER (lowest priority)
+    expect(sorted.map((i) => i.id)).toEqual(['valid', 'neg-inf']);
+  });
+
   it('handles empty array', () => {
     const sorted = sortIssues([]);
     expect(sorted).toEqual([]);
@@ -908,6 +919,17 @@ describe('sortChildrenForRecentView', () => {
     ];
     const sorted = sortChildrenForRecentView(issues);
     expect(sorted.map((i) => i.id)).toEqual(['valid', 'inf']);
+  });
+
+  it('treats -Infinity priority as lowest priority', () => {
+    const issues = [
+      makeIssue({ id: 'neg-inf', status: 'open', priority: -Infinity }),
+      makeIssue({ id: 'valid', status: 'open', priority: 2 }),
+    ];
+    const sorted = sortChildrenForRecentView(issues);
+    // -Infinity is not finite, so Number.isFinite(-Infinity) === false
+    // It gets treated as MAX_SAFE_INTEGER (lowest priority)
+    expect(sorted.map((i) => i.id)).toEqual(['valid', 'neg-inf']);
   });
 
   it('handles mixed invalid priorities correctly', () => {
