@@ -55,7 +55,8 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
   const previousFilterRef = useRef<FilterMode>(filter);
 
   // Calculate available height for issue tree (terminal - FilterBar - StatusBar)
-  const treeHeight = Math.max(1, terminalHeight - 2);
+  // StatusBar is 2 lines: summary line + cwd line
+  const treeHeight = Math.max(1, terminalHeight - 3);
 
   // Load issues
   const loadIssues = useCallback(async () => {
@@ -463,7 +464,7 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
         )}
       </box>
       {viewMode === 'tree' && (
-        <StatusBar issues={issues} scrollInfo={{ offset: scrollOffset, visible: treeHeight, total: visibleIssues.length }} />
+        <StatusBar issues={issues} scrollInfo={{ offset: scrollOffset, visible: treeHeight, total: visibleIssues.length }} workspaceRoot={workspaceRoot} />
       )}
     </box>
   );
