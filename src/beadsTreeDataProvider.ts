@@ -121,6 +121,30 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     return this.userExpandState.expandedIds.has(issueId);
   }
 
+  // Clean up stale IDs from user expand state (IDs that no longer exist in cache)
+  private cleanupStaleUserExpandState(): void {
+    const currentIds = new Set(this.issuesCache.map((i) => i.id));
+    let cleanedCount = 0;
+
+    for (const id of this.userExpandState.collapsedIds) {
+      if (!currentIds.has(id)) {
+        this.userExpandState.collapsedIds.delete(id);
+        cleanedCount++;
+      }
+    }
+
+    for (const id of this.userExpandState.expandedIds) {
+      if (!currentIds.has(id)) {
+        this.userExpandState.expandedIds.delete(id);
+        cleanedCount++;
+      }
+    }
+
+    if (cleanedCount > 0) {
+      this.log(`Cleaned up ${cleanedCount} stale user expand state entries`);
+    }
+  }
+
   getFilter(): FilterMode {
     return this.filterMode;
   }
@@ -343,6 +367,8 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
             const elapsed = Date.now() - startTime;
             this.log(`loaded ${issues.length} issues in ${elapsed}ms`);
             this.issuesCache = issues;
+            // Clean up user expand state for issues that no longer exist
+            this.cleanupStaleUserExpandState();
             // Fire event after data is loaded
             this._onDidLoadData.fire();
             return issues;
