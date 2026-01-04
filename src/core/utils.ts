@@ -168,9 +168,8 @@ export function truncateTitle(title: string, maxWidth: number): string {
 
 /**
  * Determines whether a tree node should be auto-expanded in Recent view.
- *
- * @deprecated No longer used - Recent view now expands all nodes by default.
- * Users can manually collapse nodes and the state persists during the session.
+ * Returns true only if the issue has at least one non-closed descendant.
+ * This prevents expanding epics/parents where all work is complete.
  *
  * @param issue - The issue (tree node) to check for auto-expansion
  * @param allIssues - All issues in the current view (needed to find children)
