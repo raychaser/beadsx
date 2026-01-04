@@ -17,6 +17,12 @@ interface CachedConfig {
   shortIds: boolean;
 }
 
+// Track user manual expand/collapse state
+interface UserExpandState {
+  collapsedIds: Set<string>;
+  expandedIds: Set<string>;
+}
+
 export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue> {
   private _onDidChangeTreeData: vscode.EventEmitter<BeadsIssue | undefined | null | void> =
     new vscode.EventEmitter<BeadsIssue | undefined | null | void>();
@@ -33,6 +39,8 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
   private outputChannel: vscode.OutputChannel | undefined;
   // Cached configuration to avoid repeated getConfiguration calls
   private cachedConfig: CachedConfig = { autoExpandOpen: true, shortIds: false };
+  // Track user manual expand/collapse state to respect on refresh
+  private userExpandState: UserExpandState = { collapsedIds: new Set(), expandedIds: new Set() };
 
   constructor(context?: vscode.ExtensionContext, outputChannel?: vscode.OutputChannel) {
     this.workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
@@ -84,7 +92,33 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     if (this.context) {
       this.context.workspaceState.update('beadsx.filterMode', mode);
     }
+    // Clear user expand/collapse state on filter change
+    this.userExpandState = { collapsedIds: new Set(), expandedIds: new Set() };
     this.refresh();
+  }
+
+  // Track user manual collapse (called from tree view event)
+  trackUserCollapse(issueId: string): void {
+    this.userExpandState.collapsedIds.add(issueId);
+    this.userExpandState.expandedIds.delete(issueId);
+    this.log(`User manually collapsed: ${issueId}`);
+  }
+
+  // Track user manual expand (called from tree view event)
+  trackUserExpand(issueId: string): void {
+    this.userExpandState.expandedIds.add(issueId);
+    this.userExpandState.collapsedIds.delete(issueId);
+    this.log(`User manually expanded: ${issueId}`);
+  }
+
+  // Check if user manually collapsed this issue
+  isUserCollapsed(issueId: string): boolean {
+    return this.userExpandState.collapsedIds.has(issueId);
+  }
+
+  // Check if user manually expanded this issue
+  isUserExpanded(issueId: string): boolean {
+    return this.userExpandState.expandedIds.has(issueId);
   }
 
   getFilter(): FilterMode {
@@ -177,10 +211,20 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     // Use cached config for auto-expand setting
     const { autoExpandOpen, shortIds } = this.cachedConfig;
 
+    // Check user manual expand/collapse state first
+    const userCollapsed = this.isUserCollapsed(element.id);
+    const userExpanded = this.isUserExpanded(element.id);
+
     // Determine collapsible state based on filter mode and issue status
     let collapsibleState = vscode.TreeItemCollapsibleState.None;
     if (hasChildIssues) {
-      if (element.status === 'closed') {
+      if (userCollapsed) {
+        // User manually collapsed: respect their choice
+        collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
+      } else if (userExpanded) {
+        // User manually expanded: respect their choice
+        collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
+      } else if (element.status === 'closed') {
         // Closed issues: always start collapsed
         collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
       } else if (!autoExpandOpen) {
@@ -199,8 +243,13 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
       }
     }
 
+    const userStateStr = userCollapsed
+      ? ' (user-collapsed)'
+      : userExpanded
+        ? ' (user-expanded)'
+        : '';
     this.log(
-      `getTreeItem ${element.id}: hasChildren=${hasChildIssues}, autoExpand=${autoExpandOpen}, state=${collapsibleState === vscode.TreeItemCollapsibleState.Expanded ? 'Expanded' : collapsibleState === vscode.TreeItemCollapsibleState.Collapsed ? 'Collapsed' : 'None'}`,
+      `getTreeItem ${element.id}: hasChildren=${hasChildIssues}, autoExpand=${autoExpandOpen}, state=${collapsibleState === vscode.TreeItemCollapsibleState.Expanded ? 'Expanded' : collapsibleState === vscode.TreeItemCollapsibleState.Collapsed ? 'Collapsed' : 'None'}${userStateStr}`,
     );
 
     // Status symbol
@@ -236,7 +285,9 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
       collapsibleState,
     );
 
-    // Don't set treeItem.id to allow collapsible state to be re-evaluated on each refresh
+    // Set treeItem.id to enable VS Code to track the item for expand/collapse events
+    treeItem.id = element.id;
+
     // Show relative time for closed issues
     if (element.status === 'closed' && element.closed_at) {
       const timeAgo = formatTimeAgo(element.closed_at);

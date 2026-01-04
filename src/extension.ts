@@ -418,6 +418,18 @@ export function activate(context: vscode.ExtensionContext) {
     autoExpandIssues();
   });
 
+  // Track user manual collapse/expand to respect on refresh
+  const collapseListener = treeView.onDidCollapseElement(
+    (e: vscode.TreeViewExpansionEvent<BeadsIssue>) => {
+      beadsProvider.trackUserCollapse(e.element.id);
+    },
+  );
+  const expandListener = treeView.onDidExpandElement(
+    (e: vscode.TreeViewExpansionEvent<BeadsIssue>) => {
+      beadsProvider.trackUserExpand(e.element.id);
+    },
+  );
+
   const refreshCommand = vscode.commands.registerCommand('beadsx.refresh', () => {
     clearBeadsInitializedCache(); // Re-check .beads/ directory on manual refresh
     beadsProvider.refresh();
@@ -589,6 +601,8 @@ export function activate(context: vscode.ExtensionContext) {
     filterCommand,
     configChangeListener,
     dataLoadListener,
+    collapseListener,
+    expandListener,
     {
       dispose: () => beadsProvider.dispose(),
     },
