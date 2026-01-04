@@ -9,6 +9,7 @@ import {
   type SortMode,
   getRootIssues,
   listFilteredIssues,
+  shouldAutoExpandInRecent,
   sortIssues,
   sortIssuesForRecentView,
 } from '../core';
@@ -52,6 +53,9 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
   // Track previously seen issue IDs to detect new issues on refresh
   const previousIssueIdsRef = useRef<Set<string>>(new Set());
 
+  // Track previous issue statuses to detect reopened issues
+  const previousStatusRef = useRef<Map<string, string>>(new Map());
+
   // Track previous filter to detect filter changes (for re-computing expansion)
   const previousFilterRef = useRef<FilterMode>(filter);
 
@@ -85,8 +89,9 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
         if (!hasChildren) return false;
 
         if (filter === 'recent') {
-          // For Recent view: expand all nodes with children (simple rule)
-          return true;
+          // For Recent view: only expand if there are non-closed descendants
+          // This collapses epics/parents where all work is complete
+          return shouldAutoExpandInRecent(issue, loaded);
         }
         // For other views: expand all non-closed issues with children
         return issue.status !== 'closed';
@@ -117,6 +122,17 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
         // Also clean up tracking state for deleted issues (memory management)
         const newIssueIds = new Set([...currentIds].filter((id) => !previousIds.has(id)));
 
+        // Detect reopened issues (status changed from closed to non-closed)
+        const previousStatus = previousStatusRef.current;
+        const reopenedIssueIds = new Set(
+          loaded
+            .filter((i) => {
+              const prevStatus = previousStatus.get(i.id);
+              return prevStatus === 'closed' && i.status !== 'closed';
+            })
+            .map((i) => i.id),
+        );
+
         // Build a map for quick parent lookup
         const issueMap = new Map(loaded.map((i) => [i.id, i]));
 
@@ -136,7 +152,7 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
           return next;
         });
 
-        // Find user-collapsed parents that now have new non-closed children
+        // Find user-collapsed parents that now have new or reopened non-closed children
         // These should be forcibly expanded (override user collapse)
         // Also clean up IDs that no longer exist in the current issue set
         const toForceExpand: string[] = [];
@@ -149,11 +165,14 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
               continue;
             }
             if (hasNonClosedChildren(collapsedId)) {
-              // Check if any child is new
-              const hasNewChild = loaded.some(
-                (i) => i.parentId === collapsedId && newIssueIds.has(i.id) && i.status !== 'closed',
+              // Check if any child is new OR reopened
+              const hasNewOrReopenedChild = loaded.some(
+                (i) =>
+                  i.parentId === collapsedId &&
+                  (newIssueIds.has(i.id) || reopenedIssueIds.has(i.id)) &&
+                  i.status !== 'closed',
               );
-              if (hasNewChild) {
+              if (hasNewOrReopenedChild) {
                 next.delete(collapsedId);
                 toForceExpand.push(collapsedId);
               }
@@ -162,56 +181,69 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
           return next;
         });
 
-        if (newIssueIds.size > 0 || toForceExpand.length > 0) {
-          const newToExpand: string[] = [...toForceExpand];
-
-          // Find all ancestors of new issues (with cycle detection)
-          const ancestorsOfNewIssues = new Set<string>();
-          for (const newIssueId of newIssueIds) {
-            const issue = issueMap.get(newIssueId);
+        // Compute new expansions for new/reopened issues
+        const newToExpand: string[] = [...toForceExpand];
+        if (newIssueIds.size > 0 || reopenedIssueIds.size > 0) {
+          // Find all ancestors of new and reopened issues (with cycle detection)
+          const ancestorsToExpand = new Set<string>();
+          const issueIdsToProcess = [...newIssueIds, ...reopenedIssueIds];
+          for (const issueId of issueIdsToProcess) {
+            const issue = issueMap.get(issueId);
             if (issue?.parentId) {
               const visited = new Set<string>(); // Prevent infinite loops from circular parent references
               let parentId: string | undefined = issue.parentId;
               while (parentId && !visited.has(parentId)) {
                 visited.add(parentId);
-                ancestorsOfNewIssues.add(parentId);
+                ancestorsToExpand.add(parentId);
                 const parent = issueMap.get(parentId);
                 parentId = parent?.parentId;
               }
               // Warn if cycle was detected (data corruption indicator)
               if (parentId && visited.has(parentId)) {
                 console.warn(
-                  `[warning] Circular parent reference detected for issue "${newIssueId}". ` +
+                  `[warning] Circular parent reference detected for issue "${issueId}". ` +
                     `This may indicate data corruption in .beads/issues.jsonl.`,
                 );
               }
             }
           }
 
-          // Expand new issues and their ancestors if they meet expansion criteria
+          // Expand new/reopened issues and their ancestors if they meet expansion criteria
           for (const issue of loaded) {
-            const isNewOrAncestorOfNew =
-              newIssueIds.has(issue.id) || ancestorsOfNewIssues.has(issue.id);
-            if (isNewOrAncestorOfNew && shouldExpandIssue(issue)) {
+            const shouldProcess =
+              newIssueIds.has(issue.id) ||
+              reopenedIssueIds.has(issue.id) ||
+              ancestorsToExpand.has(issue.id);
+            if (shouldProcess && shouldExpandIssue(issue)) {
               newToExpand.push(issue.id);
             }
           }
-
-          // Merge with existing expanded IDs (additive only)
-          if (newToExpand.length > 0) {
-            setExpandedIds((prev) => {
-              const next = new Set(prev);
-              for (const id of newToExpand) {
-                next.add(id);
-              }
-              return next;
-            });
-          }
         }
+
+        // Update expanded IDs: add new expansions, remove stale ones
+        setExpandedIds((prev) => {
+          const next = new Set(prev);
+          // Add new expansions
+          for (const id of newToExpand) {
+            next.add(id);
+          }
+          // Remove expansions that no longer meet criteria (all descendants closed)
+          // Only in Recent view where we use shouldAutoExpandInRecent
+          if (filter === 'recent') {
+            for (const expandedId of prev) {
+              const issue = issueMap.get(expandedId);
+              if (issue && !shouldExpandIssue(issue)) {
+                next.delete(expandedId);
+              }
+            }
+          }
+          return next;
+        });
       }
 
-      // Update previous IDs for next refresh
+      // Update previous IDs and statuses for next refresh
       previousIssueIdsRef.current = currentIds;
+      previousStatusRef.current = new Map(loaded.map((i) => [i.id, i.status]));
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       console.error(`[error] Failed to load issues: ${errorMessage}`);
