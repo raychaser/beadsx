@@ -100,9 +100,10 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
         }
         setExpandedIds(toExpand);
       } else {
-        // Refresh: respect user manual expand/collapse preferences
-        // Only auto-expand/collapse if user hasn't manually changed the state
-        // Refresh: expand newly-discovered issues AND their parents
+        // Refresh: expand newly-discovered issues AND their parent chain
+        // Respect user manual expand/collapse preferences except when:
+        // - A user-collapsed parent receives new non-closed children (force expand)
+        // Also clean up tracking state for deleted issues (memory management)
         const newIssueIds = new Set([...currentIds].filter((id) => !previousIds.has(id)));
 
         // Build a map for quick parent lookup
@@ -282,6 +283,15 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
       ? issues.find((i) => i.id === detailStack[detailStack.length - 1])
       : null;
 
+  // Helper to change filter and reset all related state
+  const changeFilter = useCallback((newFilter: FilterMode) => {
+    setFilter(newFilter);
+    setSelectedIndex(0);
+    setScrollOffset(0);
+    setUserCollapsedIds(new Set());
+    setUserExpandedIds(new Set());
+  }, []);
+
   // Keyboard input handling
   useKeyboard((event: KeyEvent) => {
     const key = event.name;
@@ -400,31 +410,15 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
       }
     }
 
-    // Filter shortcuts - reset selection, scroll, and user expand/collapse state on filter change
+    // Filter shortcuts
     else if (key === '1') {
-      setFilter('all');
-      setSelectedIndex(0);
-      setScrollOffset(0);
-      setUserCollapsedIds(new Set());
-      setUserExpandedIds(new Set());
+      changeFilter('all');
     } else if (key === '2') {
-      setFilter('open');
-      setSelectedIndex(0);
-      setScrollOffset(0);
-      setUserCollapsedIds(new Set());
-      setUserExpandedIds(new Set());
+      changeFilter('open');
     } else if (key === '3') {
-      setFilter('ready');
-      setSelectedIndex(0);
-      setScrollOffset(0);
-      setUserCollapsedIds(new Set());
-      setUserExpandedIds(new Set());
+      changeFilter('ready');
     } else if (key === '4') {
-      setFilter('recent');
-      setSelectedIndex(0);
-      setScrollOffset(0);
-      setUserCollapsedIds(new Set());
-      setUserExpandedIds(new Set());
+      changeFilter('recent');
     }
 
     // Refresh

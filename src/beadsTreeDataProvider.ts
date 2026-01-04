@@ -17,11 +17,10 @@ interface CachedConfig {
   shortIds: boolean;
 }
 
-// Track user manual expand/collapse state
-interface UserExpandState {
-  collapsedIds: Set<string>;
-  expandedIds: Set<string>;
-}
+// User expand state: 'collapsed' or 'expanded'
+// An ID not in the map means no user preference recorded (use auto-expand logic)
+// Using a Map makes illegal states unrepresentable - an ID can only have one state
+type UserExpandState = Map<string, 'collapsed' | 'expanded'>;
 
 export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue> {
   private _onDidChangeTreeData: vscode.EventEmitter<BeadsIssue | undefined | null | void> =
@@ -40,7 +39,7 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
   // Cached configuration to avoid repeated getConfiguration calls
   private cachedConfig: CachedConfig = { autoExpandOpen: true, shortIds: false };
   // Track user manual expand/collapse state to respect on refresh
-  private userExpandState: UserExpandState = { collapsedIds: new Set(), expandedIds: new Set() };
+  private userExpandState: UserExpandState = new Map();
 
   constructor(context?: vscode.ExtensionContext, outputChannel?: vscode.OutputChannel) {
     this.workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
@@ -93,32 +92,32 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
       this.context.workspaceState.update('beadsx.filterMode', mode);
     }
     // Clear user expand/collapse state on filter change
-    this.userExpandState = { collapsedIds: new Set(), expandedIds: new Set() };
+    // Different filters show different issue sets, so previous expand/collapse
+    // preferences may not apply or could cause confusion
+    this.userExpandState = new Map();
     this.refresh();
   }
 
   // Track user manual collapse (called from tree view event)
   trackUserCollapse(issueId: string): void {
-    this.userExpandState.collapsedIds.add(issueId);
-    this.userExpandState.expandedIds.delete(issueId);
+    this.userExpandState.set(issueId, 'collapsed');
     this.log(`User manually collapsed: ${issueId}`);
   }
 
   // Track user manual expand (called from tree view event)
   trackUserExpand(issueId: string): void {
-    this.userExpandState.expandedIds.add(issueId);
-    this.userExpandState.collapsedIds.delete(issueId);
+    this.userExpandState.set(issueId, 'expanded');
     this.log(`User manually expanded: ${issueId}`);
   }
 
   // Check if user manually collapsed this issue
   isUserCollapsed(issueId: string): boolean {
-    return this.userExpandState.collapsedIds.has(issueId);
+    return this.userExpandState.get(issueId) === 'collapsed';
   }
 
   // Check if user manually expanded this issue
   isUserExpanded(issueId: string): boolean {
-    return this.userExpandState.expandedIds.has(issueId);
+    return this.userExpandState.get(issueId) === 'expanded';
   }
 
   // Clean up stale IDs from user expand state (IDs that no longer exist in cache)
@@ -126,16 +125,9 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     const currentIds = new Set(this.issuesCache.map((i) => i.id));
     let cleanedCount = 0;
 
-    for (const id of this.userExpandState.collapsedIds) {
+    for (const id of this.userExpandState.keys()) {
       if (!currentIds.has(id)) {
-        this.userExpandState.collapsedIds.delete(id);
-        cleanedCount++;
-      }
-    }
-
-    for (const id of this.userExpandState.expandedIds) {
-      if (!currentIds.has(id)) {
-        this.userExpandState.expandedIds.delete(id);
+        this.userExpandState.delete(id);
         cleanedCount++;
       }
     }
