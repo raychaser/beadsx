@@ -379,6 +379,17 @@ describe('sortIssues', () => {
     expect(sorted.map((i) => i.id)).toEqual(['valid', 'inf']);
   });
 
+  it('treats -Infinity priority as lowest priority (invalid) for open issues', () => {
+    const issues = [
+      makeIssue({ status: 'open', priority: 2, id: 'valid' }),
+      makeIssue({ status: 'open', priority: -Infinity, id: 'neg-inf' }),
+      makeIssue({ status: 'open', priority: 0, id: 'zero' }),
+    ];
+    const sorted = sortIssues(issues);
+    // -Infinity is non-finite, so treated as invalid priority (sorted last)
+    expect(sorted.map((i) => i.id)).toEqual(['zero', 'valid', 'neg-inf']);
+  });
+
   it('handles empty array', () => {
     const sorted = sortIssues([]);
     expect(sorted).toEqual([]);
@@ -908,6 +919,17 @@ describe('sortChildrenForRecentView', () => {
     ];
     const sorted = sortChildrenForRecentView(issues);
     expect(sorted.map((i) => i.id)).toEqual(['valid', 'inf']);
+  });
+
+  it('treats -Infinity priority as lowest priority (invalid)', () => {
+    const issues = [
+      makeIssue({ id: 'valid', status: 'open', priority: 2 }),
+      makeIssue({ id: 'neg-inf', status: 'open', priority: -Infinity }),
+      makeIssue({ id: 'zero', status: 'open', priority: 0 }),
+    ];
+    const sorted = sortChildrenForRecentView(issues);
+    // -Infinity is non-finite, so treated as invalid priority (sorted last)
+    expect(sorted.map((i) => i.id)).toEqual(['zero', 'valid', 'neg-inf']);
   });
 
   it('handles mixed invalid priorities correctly', () => {
