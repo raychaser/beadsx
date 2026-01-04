@@ -1,13 +1,6 @@
 import * as vscode from 'vscode';
 import { BeadsIssue, type FilterMode, listFilteredIssuesWithConfig } from './beadsService';
-import {
-  formatTimeAgo,
-  type SortMode,
-  shouldAutoExpandInRecent,
-  sortChildrenForRecentView,
-  sortIssues,
-  sortRootIssuesForRecentView,
-} from './utils';
+import { formatTimeAgo, type SortMode, sortIssues, sortIssuesForRecentView } from './utils';
 
 export { BeadsIssue };
 
@@ -163,19 +156,16 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
 
     // Find issues that should be expanded based on filter mode
     return this.issuesCache.filter((issue) => {
-      const isOpen = issue.status !== 'closed';
       const hasChildren = this.issuesCache.some((child) => child.parentId === issue.id);
-
       if (!hasChildren) return false;
-      if (!isOpen) return false;
 
       if (this.filterMode === 'recent') {
-        // Recent view: expand if issue is in_progress OR subtree contains important work
-        return issue.status === 'in_progress' || shouldAutoExpandInRecent(issue, this.issuesCache);
+        // Recent view: expand all nodes with children (simple rule)
+        return true;
       }
 
-      // Other views: expand all non-closed issues
-      return true;
+      // Other views: expand all non-closed issues with children
+      return issue.status !== 'closed';
     });
   }
 
@@ -240,19 +230,15 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
       } else if (userExpanded) {
         // User manually expanded: respect their choice
         collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
-      } else if (element.status === 'closed') {
-        // Closed issues: always start collapsed
-        collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
       } else if (!autoExpandOpen) {
         // Auto-expand disabled: collapse all
         collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
       } else if (this.filterMode === 'recent') {
-        // Recent view: expand if issue is in_progress OR subtree contains important work
-        const shouldExpand =
-          element.status === 'in_progress' || shouldAutoExpandInRecent(element, this.issuesCache);
-        collapsibleState = shouldExpand
-          ? vscode.TreeItemCollapsibleState.Expanded
-          : vscode.TreeItemCollapsibleState.Collapsed;
+        // Recent view: expand all nodes with children (simple rule)
+        collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
+      } else if (element.status === 'closed') {
+        // Other views: closed issues start collapsed
+        collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
       } else {
         // Other views: expand all non-closed issues
         collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
@@ -386,8 +372,8 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     if (element) {
       // Return children of this element (issues whose parentId matches this element's id)
       const children = this.issuesCache.filter((issue) => issue.parentId === element.id);
-      // For Recent view, sort children by non-closed first (by priority), then closed (by priority)
-      return isRecentView ? sortChildrenForRecentView(children) : sortIssues(children, sortMode);
+      // For Recent view: use same sorting at all levels (epics first, then by status/priority)
+      return isRecentView ? sortIssuesForRecentView(children) : sortIssues(children, sortMode);
     }
 
     // Return root issues (issues with no parent OR whose parent is not in the filtered cache)
@@ -397,8 +383,8 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
       const parentInCache = this.issuesCache.some((i) => i.id === issue.parentId);
       return !parentInCache;
     });
-    // For Recent view, sort roots with epics first (by update time), then non-epics (by status/priority)
-    return isRecentView ? sortRootIssuesForRecentView(roots) : sortIssues(roots, sortMode);
+    // For Recent view: use same sorting at all levels (epics first, then by status/priority)
+    return isRecentView ? sortIssuesForRecentView(roots) : sortIssues(roots, sortMode);
   }
 
   getParent(element: BeadsIssue): BeadsIssue | undefined {

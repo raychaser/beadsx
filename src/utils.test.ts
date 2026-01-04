@@ -9,6 +9,7 @@ import {
   shouldAutoExpandInRecent,
   sortChildrenForRecentView,
   sortIssues,
+  sortIssuesForRecentView,
   sortRootIssuesForRecentView,
   truncateTitle,
   validateRecentWindowMinutes,
@@ -1087,5 +1088,113 @@ describe('sortRootIssuesForRecentView', () => {
     ];
     const sorted = sortRootIssuesForRecentView(issues);
     expect(sorted.map((i) => i.id)).toEqual(['epic1', 'epic2', 'epic3']);
+  });
+});
+
+describe('sortIssuesForRecentView', () => {
+  const makeIssue = (
+    overrides: Partial<{
+      id: string;
+      status: string;
+      priority: number;
+      closed_at: string | null;
+      updated_at: string;
+      issue_type: string;
+    }>,
+  ) => ({
+    status: 'open',
+    priority: 2,
+    closed_at: null,
+    updated_at: '2025-01-01T00:00:00.000Z',
+    issue_type: 'task',
+    ...overrides,
+  });
+
+  it('places epics before non-epics at any level', () => {
+    const issues = [
+      makeIssue({ id: 'task', issue_type: 'task' }),
+      makeIssue({ id: 'epic', issue_type: 'epic' }),
+      makeIssue({ id: 'bug', issue_type: 'bug' }),
+    ];
+    const sorted = sortIssuesForRecentView(issues);
+    expect(sorted[0].id).toBe('epic');
+  });
+
+  it('sorts epics by updated_at (most recent first)', () => {
+    const issues = [
+      makeIssue({ id: 'old-epic', issue_type: 'epic', updated_at: '2025-01-01T00:00:00.000Z' }),
+      makeIssue({ id: 'new-epic', issue_type: 'epic', updated_at: '2025-01-15T00:00:00.000Z' }),
+      makeIssue({ id: 'mid-epic', issue_type: 'epic', updated_at: '2025-01-08T00:00:00.000Z' }),
+    ];
+    const sorted = sortIssuesForRecentView(issues);
+    expect(sorted.map((i) => i.id)).toEqual(['new-epic', 'mid-epic', 'old-epic']);
+  });
+
+  it('sorts non-epics by status/priority (non-closed first by priority)', () => {
+    const issues = [
+      makeIssue({ id: 'closed-p0', issue_type: 'task', status: 'closed', priority: 0 }),
+      makeIssue({ id: 'open-p2', issue_type: 'task', status: 'open', priority: 2 }),
+      makeIssue({ id: 'open-p1', issue_type: 'bug', status: 'open', priority: 1 }),
+    ];
+    const sorted = sortIssuesForRecentView(issues);
+    expect(sorted.map((i) => i.id)).toEqual(['open-p1', 'open-p2', 'closed-p0']);
+  });
+
+  it('handles mixed epics and non-epics correctly', () => {
+    const issues = [
+      makeIssue({ id: 'task-p1', issue_type: 'task', status: 'open', priority: 1 }),
+      makeIssue({ id: 'old-epic', issue_type: 'epic', updated_at: '2025-01-01T00:00:00.000Z' }),
+      makeIssue({ id: 'new-epic', issue_type: 'epic', updated_at: '2025-01-15T00:00:00.000Z' }),
+      makeIssue({ id: 'task-p0', issue_type: 'task', status: 'open', priority: 0 }),
+    ];
+    const sorted = sortIssuesForRecentView(issues);
+    // Epics first (by recency), then non-epics (by status/priority)
+    expect(sorted.map((i) => i.id)).toEqual(['new-epic', 'old-epic', 'task-p0', 'task-p1']);
+  });
+
+  it('works for children (not just root)', () => {
+    // This is the key difference from sortRootIssuesForRecentView -
+    // sortIssuesForRecentView is designed to work at any tree level
+    const childIssues = [
+      makeIssue({ id: 'child-epic', issue_type: 'epic', updated_at: '2025-01-10T00:00:00.000Z' }),
+      makeIssue({ id: 'child-task-closed', issue_type: 'task', status: 'closed', priority: 0 }),
+      makeIssue({ id: 'child-task-open', issue_type: 'task', status: 'open', priority: 1 }),
+    ];
+    const sorted = sortIssuesForRecentView(childIssues);
+    // Even at child level: epics first, then non-closed by priority, then closed by priority
+    expect(sorted.map((i) => i.id)).toEqual(['child-epic', 'child-task-open', 'child-task-closed']);
+  });
+
+  it('does not mutate the input array', () => {
+    const original = [
+      makeIssue({ id: 'epic', issue_type: 'epic' }),
+      makeIssue({ id: 'task', issue_type: 'task' }),
+    ];
+    const originalCopy = [...original];
+    sortIssuesForRecentView(original);
+    expect(original).toEqual(originalCopy);
+  });
+
+  it('handles empty array', () => {
+    const sorted = sortIssuesForRecentView([]);
+    expect(sorted).toEqual([]);
+  });
+
+  it('treats NaN priority as lowest priority for non-epics', () => {
+    const issues = [
+      makeIssue({ id: 'nan', issue_type: 'task', status: 'open', priority: NaN }),
+      makeIssue({ id: 'valid', issue_type: 'task', status: 'open', priority: 1 }),
+    ];
+    const sorted = sortIssuesForRecentView(issues);
+    expect(sorted.map((i) => i.id)).toEqual(['valid', 'nan']);
+  });
+
+  it('treats invalid updated_at as oldest for epics', () => {
+    const issues = [
+      makeIssue({ id: 'invalid-epic', issue_type: 'epic', updated_at: 'invalid-date' }),
+      makeIssue({ id: 'valid-epic', issue_type: 'epic', updated_at: '2025-01-15T00:00:00.000Z' }),
+    ];
+    const sorted = sortIssuesForRecentView(issues);
+    expect(sorted.map((i) => i.id)).toEqual(['valid-epic', 'invalid-epic']);
   });
 });
