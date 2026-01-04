@@ -380,15 +380,15 @@ describe('sortIssues', () => {
     expect(sorted.map((i) => i.id)).toEqual(['valid', 'inf']);
   });
 
-  it('treats -Infinity priority as lowest priority for open issues', () => {
+  it('treats -Infinity priority as lowest priority (invalid) for open issues', () => {
     const issues = [
-      makeIssue({ status: 'open', priority: -Infinity, id: 'neg-inf' }),
       makeIssue({ status: 'open', priority: 2, id: 'valid' }),
+      makeIssue({ status: 'open', priority: -Infinity, id: 'neg-inf' }),
+      makeIssue({ status: 'open', priority: 0, id: 'zero' }),
     ];
     const sorted = sortIssues(issues);
-    // -Infinity is not finite, so Number.isFinite(-Infinity) === false
-    // It gets treated as MAX_SAFE_INTEGER (lowest priority)
-    expect(sorted.map((i) => i.id)).toEqual(['valid', 'neg-inf']);
+    // -Infinity is non-finite, so treated as invalid priority (sorted last)
+    expect(sorted.map((i) => i.id)).toEqual(['zero', 'valid', 'neg-inf']);
   });
 
   it('handles empty array', () => {
@@ -922,15 +922,15 @@ describe('sortChildrenForRecentView', () => {
     expect(sorted.map((i) => i.id)).toEqual(['valid', 'inf']);
   });
 
-  it('treats -Infinity priority as lowest priority', () => {
+  it('treats -Infinity priority as lowest priority (invalid)', () => {
     const issues = [
-      makeIssue({ id: 'neg-inf', status: 'open', priority: -Infinity }),
       makeIssue({ id: 'valid', status: 'open', priority: 2 }),
+      makeIssue({ id: 'neg-inf', status: 'open', priority: -Infinity }),
+      makeIssue({ id: 'zero', status: 'open', priority: 0 }),
     ];
     const sorted = sortChildrenForRecentView(issues);
-    // -Infinity is not finite, so Number.isFinite(-Infinity) === false
-    // It gets treated as MAX_SAFE_INTEGER (lowest priority)
-    expect(sorted.map((i) => i.id)).toEqual(['valid', 'neg-inf']);
+    // -Infinity is non-finite, so treated as invalid priority (sorted last)
+    expect(sorted.map((i) => i.id)).toEqual(['zero', 'valid', 'neg-inf']);
   });
 
   it('handles mixed invalid priorities correctly', () => {

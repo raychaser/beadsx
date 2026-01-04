@@ -44,9 +44,10 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
   const [detailStack, setDetailStack] = useState<string[]>([]); // Stack of issue IDs for navigation history
   const [selectedChildIndex, setSelectedChildIndex] = useState(0);
 
-  // Track user-initiated collapses separately from auto-expanded state
-  // This allows us to override user collapse when new non-closed children appear
+  // Track user-initiated expand/collapse separately from auto-expanded state
+  // This allows us to respect user preferences while still auto-expanding for new work
   const [userCollapsedIds, setUserCollapsedIds] = useState<Set<string>>(new Set());
+  const [userExpandedIds, setUserExpandedIds] = useState<Set<string>>(new Set());
 
   // Track previously seen issue IDs to detect new issues on refresh
   const previousIssueIdsRef = useRef<Set<string>>(new Set());
@@ -110,7 +111,10 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
           setUserCollapsedIds(new Set());
         }
       } else {
-        // Refresh: expand newly-discovered issues AND their parents
+        // Refresh: expand newly-discovered issues AND their parent chain
+        // Respect user manual expand/collapse preferences except when:
+        // - A user-collapsed parent receives new non-closed children (force expand)
+        // Also clean up tracking state for deleted issues (memory management)
         const newIssueIds = new Set([...currentIds].filter((id) => !previousIds.has(id)));
 
         // Build a map for quick parent lookup
@@ -120,6 +124,17 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
         const hasNonClosedChildren = (issueId: string): boolean => {
           return loaded.some((i) => i.parentId === issueId && i.status !== 'closed');
         };
+
+        // Clean up user-expanded IDs that no longer exist (memory cleanup)
+        setUserExpandedIds((prev) => {
+          const next = new Set(prev);
+          for (const expandedId of prev) {
+            if (!currentIds.has(expandedId)) {
+              next.delete(expandedId);
+            }
+          }
+          return next;
+        });
 
         // Find user-collapsed parents that now have new non-closed children
         // These should be forcibly expanded (override user collapse)
@@ -279,6 +294,15 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
       ? issues.find((i) => i.id === detailStack[detailStack.length - 1])
       : null;
 
+  // Helper to change filter and reset all related state
+  const changeFilter = useCallback((newFilter: FilterMode) => {
+    setFilter(newFilter);
+    setSelectedIndex(0);
+    setScrollOffset(0);
+    setUserCollapsedIds(new Set());
+    setUserExpandedIds(new Set());
+  }, []);
+
   // Keyboard input handling
   useKeyboard((event: KeyEvent) => {
     const key = event.name;
@@ -368,8 +392,13 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
     // Expand/collapse
     else if (key === 'left' || key === 'h') {
       if (selectedIssue && expandedIds.has(selectedIssue.id)) {
-        // Track user-initiated collapse
+        // Track user-initiated collapse and clear user-expanded state
         setUserCollapsedIds((ids) => new Set(ids).add(selectedIssue.id));
+        setUserExpandedIds((ids) => {
+          const next = new Set(ids);
+          next.delete(selectedIssue.id);
+          return next;
+        });
         setExpandedIds((ids) => {
           const next = new Set(ids);
           next.delete(selectedIssue.id);
@@ -380,7 +409,8 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
       if (selectedIssue) {
         const hasChildren = issues.some((i) => i.parentId === selectedIssue.id);
         if (hasChildren) {
-          // Clear user-collapsed state when user explicitly expands
+          // Track user-initiated expand and clear user-collapsed state
+          setUserExpandedIds((ids) => new Set(ids).add(selectedIssue.id));
           setUserCollapsedIds((ids) => {
             const next = new Set(ids);
             next.delete(selectedIssue.id);
@@ -391,27 +421,15 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
       }
     }
 
-    // Filter shortcuts - reset selection, scroll, and user collapse state on filter change
+    // Filter shortcuts
     else if (key === '1') {
-      setFilter('all');
-      setSelectedIndex(0);
-      setScrollOffset(0);
-      setUserCollapsedIds(new Set());
+      changeFilter('all');
     } else if (key === '2') {
-      setFilter('open');
-      setSelectedIndex(0);
-      setScrollOffset(0);
-      setUserCollapsedIds(new Set());
+      changeFilter('open');
     } else if (key === '3') {
-      setFilter('ready');
-      setSelectedIndex(0);
-      setScrollOffset(0);
-      setUserCollapsedIds(new Set());
+      changeFilter('ready');
     } else if (key === '4') {
-      setFilter('recent');
-      setSelectedIndex(0);
-      setScrollOffset(0);
-      setUserCollapsedIds(new Set());
+      changeFilter('recent');
     }
 
     // Refresh
