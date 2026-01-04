@@ -5,9 +5,9 @@ import { createCliRenderer } from '@opentui/core';
 import { createRoot } from '@opentui/react';
 import { Command } from 'commander';
 import * as path from 'node:path';
-import { stat } from 'node:fs/promises';
-import { configure, isBeadsInitialized, type Logger } from '../core';
+import { configure, type Logger } from '../core';
 import { App } from './App';
+import { validateBeadsInitialized, validateWorkspace } from './validation';
 import pkg from '../../package.json';
 
 // Build clean argv for Commander
@@ -72,28 +72,17 @@ configure({ useJsonlMode: noDb }, logger, (message, type) => {
 
 async function main() {
   // Validate workspace path exists and is a directory
-  try {
-    const stats = await stat(workspaceRoot);
-    if (!stats.isDirectory()) {
-      console.error(`Error: ${workspaceRoot} is not a directory`);
-      process.exit(1);
-    }
-  } catch (err) {
-    if (err instanceof Error && 'code' in err && err.code === 'ENOENT') {
-      console.error(`Error: Directory not found: ${workspaceRoot}`);
-    } else if (err instanceof Error && 'code' in err && err.code === 'EACCES') {
-      console.error(`Error: Permission denied accessing ${workspaceRoot}`);
-    } else {
-      console.error(`Error: Cannot access ${workspaceRoot}: ${err}`);
-    }
-    process.exit(1);
+  const workspaceResult = await validateWorkspace(workspaceRoot);
+  if (!workspaceResult.valid) {
+    console.error(`Error: ${workspaceResult.error}`);
+    process.exit(workspaceResult.exitCode);
   }
 
-  // Check if beads is initialized using core function
-  if (!(await isBeadsInitialized(workspaceRoot))) {
-    console.error(`Error: No .beads directory found in ${workspaceRoot}`);
-    console.error('Run "bd init" to initialize beads in this directory.');
-    process.exit(1);
+  // Check if beads is initialized
+  const beadsResult = await validateBeadsInitialized(workspaceRoot);
+  if (!beadsResult.valid) {
+    console.error(`Error: ${beadsResult.error}`);
+    process.exit(beadsResult.exitCode);
   }
 
   const renderer = await createCliRenderer({
