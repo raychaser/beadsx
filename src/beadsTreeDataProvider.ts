@@ -1,6 +1,12 @@
 import * as vscode from 'vscode';
 import { BeadsIssue, type FilterMode, listFilteredIssuesWithConfig } from './beadsService';
-import { formatTimeAgo, type SortMode, sortIssues, sortIssuesForRecentView } from './utils';
+import {
+  formatTimeAgo,
+  type SortMode,
+  shouldAutoExpandInRecent,
+  sortIssues,
+  sortIssuesForRecentView,
+} from './utils';
 
 export { BeadsIssue };
 
@@ -160,8 +166,8 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
       if (!hasChildren) return false;
 
       if (this.filterMode === 'recent') {
-        // Recent view: expand all nodes with children (simple rule)
-        return true;
+        // Recent view: only expand if there are non-closed descendants
+        return shouldAutoExpandInRecent(issue, this.issuesCache);
       }
 
       // Other views: expand all non-closed issues with children
@@ -234,8 +240,11 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
         // Auto-expand disabled: collapse all
         collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
       } else if (this.filterMode === 'recent') {
-        // Recent view: expand all nodes with children (simple rule)
-        collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
+        // Recent view: only expand if there are non-closed descendants
+        // This collapses epics/parents where all work is complete
+        collapsibleState = shouldAutoExpandInRecent(element, this.issuesCache)
+          ? vscode.TreeItemCollapsibleState.Expanded
+          : vscode.TreeItemCollapsibleState.Collapsed;
       } else if (element.status === 'closed') {
         // Other views: closed issues start collapsed
         collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
