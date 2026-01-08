@@ -6,14 +6,14 @@ import { getShortId, getStatusColor, getStatusIcon, getTypeIcon } from '../const
 import { useTheme } from '../theme';
 
 interface DetailViewProps {
-  issue: BeadsIssue;
-  allIssues: BeadsIssue[];
-  selectedChildIndex: number;
+  readonly issue: BeadsIssue;
+  readonly allIssues: readonly BeadsIssue[];
+  readonly selectedChildIndex: number;
 }
 
 interface ChildIssueRowProps {
-  child: BeadsIssue;
-  isSelected: boolean;
+  readonly child: BeadsIssue;
+  readonly isSelected: boolean;
 }
 
 /**
