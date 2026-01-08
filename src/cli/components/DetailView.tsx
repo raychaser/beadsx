@@ -3,6 +3,7 @@
 import type { BeadsIssue } from '../../core';
 import { formatTimeAgo, getAllAncestors, getChildren, sortIssues } from '../../core';
 import { getShortId, getStatusColor, getStatusIcon, getTypeIcon } from '../constants';
+import { useTheme } from '../theme';
 
 interface DetailViewProps {
   issue: BeadsIssue;
@@ -19,22 +20,33 @@ interface ChildIssueRowProps {
  * Renders a single child issue row with status icon, ID, and title.
  */
 function ChildIssueRow({ child, isSelected }: ChildIssueRowProps) {
+  const theme = useTheme();
   const statusIcon = getStatusIcon(child.status);
   const statusColor = getStatusColor(child.status);
   const shortId = getShortId(child.id);
   const timeAgo = child.status === 'closed' && child.closed_at ? ` (${formatTimeAgo(child.closed_at)})` : '';
-  const titleColor = child.status === 'closed' ? 'gray' : 'white';
+
+  // In light mode, we need high contrast (white text on blue bg)
+  // In dark mode, original colors are readable on blue background
+  const isLightMode = theme.mode === 'light';
+
+  // Use inverse colors when selected in light mode for better contrast
+  // In dark mode, keep original colors as they're readable on blue background
+  const needsInverse = isSelected && isLightMode;
+  const textColor = needsInverse ? theme.textInverse : theme.textPrimary;
+  const mutedColor = needsInverse ? theme.textInverse : theme.textMuted;
+  const titleColor = child.status === 'closed' ? mutedColor : textColor;
 
   return (
     <box key={child.id} style={{ height: 1 }}>
-      <text bg={isSelected ? 'blue' : undefined}>
+      <text bg={isSelected ? theme.selectionBg : undefined}>
         <span>  </span>
         <span fg={statusColor}>{statusIcon}</span>
         <span> </span>
-        <span fg="gray">{shortId}</span>
+        <span fg={mutedColor}>{shortId}</span>
         <span> </span>
         <span fg={titleColor}>{child.title}</span>
-        {timeAgo && <span fg="gray">{timeAgo}</span>}
+        {timeAgo && <span fg={mutedColor}>{timeAgo}</span>}
       </text>
     </box>
   );
@@ -65,6 +77,7 @@ function formatDate(dateStr: string): string {
 }
 
 export function DetailView({ issue, allIssues, selectedChildIndex }: DetailViewProps) {
+  const theme = useTheme();
   const ancestors = getAllAncestors(issue, allIssues);
   const children = sortIssues(getChildren(issue, allIssues));
   const openChildren = children.filter((c) => c.status !== 'closed');
@@ -79,18 +92,18 @@ export function DetailView({ issue, allIssues, selectedChildIndex }: DetailViewP
       {/* Breadcrumbs */}
       {ancestors.length > 0 && (
         <box style={{ height: 1 }}>
-          <text fg="gray">
-            {ancestors.map((a) => a.title).join(' › ')} › <span fg="white">{issue.title}</span>
+          <text fg={theme.textMuted}>
+            {ancestors.map((a) => a.title).join(' › ')} › <span fg={theme.textPrimary}>{issue.title}</span>
           </text>
         </box>
       )}
 
       {/* Header */}
       <box style={{ height: 1 }}>
-        <text fg="gray">{issue.id}</text>
+        <text fg={theme.textMuted}>{issue.id}</text>
       </box>
       <box style={{ height: 1 }}>
-        <text bold fg="white">
+        <text bold fg={theme.textPrimary}>
           {issue.title}
         </text>
       </box>
@@ -101,38 +114,38 @@ export function DetailView({ issue, allIssues, selectedChildIndex }: DetailViewP
       {/* Metadata grid */}
       <box style={{ height: 1 }}>
         <text>
-          <span fg="gray">Type: </span>
+          <span fg={theme.textMuted}>Type: </span>
           <span>{typeIcon} {issue.issue_type}</span>
           <span>    </span>
-          <span fg="gray">Status: </span>
+          <span fg={theme.textMuted}>Status: </span>
           <span fg={statusColor}>{statusIcon} {issue.status.replace('_', ' ')}</span>
         </text>
       </box>
       <box style={{ height: 1 }}>
         <text>
-          <span fg="gray">Priority: </span>
-          <span fg="cyan">P{issue.priority}</span>
+          <span fg={theme.textMuted}>Priority: </span>
+          <span fg={theme.accent}>P{issue.priority}</span>
           <span>    </span>
-          <span fg="gray">Assignee: </span>
+          <span fg={theme.textMuted}>Assignee: </span>
           <span>{issue.assignee || 'Unassigned'}</span>
         </text>
       </box>
       <box style={{ height: 1 }}>
         <text>
-          <span fg="gray">Created: </span>
+          <span fg={theme.textMuted}>Created: </span>
           <span>{formatDate(issue.created_at)}</span>
         </text>
       </box>
       <box style={{ height: 1 }}>
         <text>
-          <span fg="gray">Updated: </span>
+          <span fg={theme.textMuted}>Updated: </span>
           <span>{formatDate(issue.updated_at)}</span>
         </text>
       </box>
       {issue.closed_at && (
         <box style={{ height: 1 }}>
           <text>
-            <span fg="gray">Closed: </span>
+            <span fg={theme.textMuted}>Closed: </span>
             <span>{formatDate(issue.closed_at)}</span>
           </text>
         </box>
@@ -140,7 +153,7 @@ export function DetailView({ issue, allIssues, selectedChildIndex }: DetailViewP
       {issue.labels && issue.labels.length > 0 && (
         <box style={{ height: 1 }}>
           <text>
-            <span fg="gray">Labels: </span>
+            <span fg={theme.textMuted}>Labels: </span>
             <span>{issue.labels.join(', ')}</span>
           </text>
         </box>
@@ -153,12 +166,12 @@ export function DetailView({ issue, allIssues, selectedChildIndex }: DetailViewP
             <text> </text>
           </box>
           <box style={{ height: 1 }}>
-            <text fg="white" bold>
+            <text fg={theme.textPrimary} bold>
               Description
             </text>
           </box>
           <box style={{ height: 1 }}>
-            <text fg="gray">────────────────────────────────────────</text>
+            <text fg={theme.border}>────────────────────────────────────────</text>
           </box>
           <box>
             <text>{issue.description}</text>
@@ -173,19 +186,19 @@ export function DetailView({ issue, allIssues, selectedChildIndex }: DetailViewP
             <text> </text>
           </box>
           <box style={{ height: 1 }}>
-            <text fg="white" bold>
+            <text fg={theme.textPrimary} bold>
               Children ({children.length})
             </text>
           </box>
           <box style={{ height: 1 }}>
-            <text fg="gray">────────────────────────────────────────</text>
+            <text fg={theme.border}>────────────────────────────────────────</text>
           </box>
 
           {/* Open children */}
           {openChildren.length > 0 && (
             <>
               <box style={{ height: 1 }}>
-                <text fg="gray">Open ({openChildren.length})</text>
+                <text fg={theme.textMuted}>Open ({openChildren.length})</text>
               </box>
               {openChildren.map((child, idx) => (
                 <ChildIssueRow key={child.id} child={child} isSelected={idx === selectedChildIndex} />
@@ -197,7 +210,7 @@ export function DetailView({ issue, allIssues, selectedChildIndex }: DetailViewP
           {closedChildren.length > 0 && (
             <>
               <box style={{ height: 1 }}>
-                <text fg="gray">Closed ({closedChildren.length})</text>
+                <text fg={theme.textMuted}>Closed ({closedChildren.length})</text>
               </box>
               {closedChildren.map((child, idx) => (
                 <ChildIssueRow
@@ -216,7 +229,7 @@ export function DetailView({ issue, allIssues, selectedChildIndex }: DetailViewP
         <text> </text>
       </box>
       <box style={{ height: 1 }}>
-        <text fg="gray">
+        <text fg={theme.textMuted}>
           {children.length > 0 ? 'j/k: select child  Enter: drill in  ' : ''}ESC: back
         </text>
       </box>

@@ -17,6 +17,7 @@ import { DetailView, getSelectableChildrenCount, getSelectedChild } from './comp
 import { FilterBar } from './components/FilterBar';
 import { IssueTree } from './components/IssueTree';
 import { StatusBar } from './components/StatusBar';
+import { type ThemeMode, ThemeContext, detectThemeMode, getTheme } from './theme';
 
 interface AppProps {
   workspaceRoot: string;
@@ -58,6 +59,10 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
 
   // Track previous filter to detect filter changes (for re-computing expansion)
   const previousFilterRef = useRef<FilterMode>(filter);
+
+  // Theme state - can be toggled with 't' key
+  const [themeMode, setThemeMode] = useState<ThemeMode>(detectThemeMode);
+  const currentTheme = getTheme(themeMode);
 
   // Calculate available height for issue tree (terminal - FilterBar - StatusBar)
   // StatusBar is 2 lines: summary line + cwd line
@@ -472,6 +477,11 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
         setError(`Manual refresh failed: ${errorMessage}`);
       });
     }
+
+    // Toggle theme
+    else if (key === 't') {
+      setThemeMode((mode) => (mode === 'dark' ? 'light' : 'dark'));
+    }
   });
 
   // Keep selection and scroll offset in bounds
@@ -487,35 +497,37 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
   }, [visibleIssues.length, selectedIndex, scrollOffset, treeHeight]);
 
   return (
-    <box flexDirection="column" height={terminalHeight}>
-      {viewMode === 'tree' && <FilterBar filter={filter} lastRefresh={lastRefresh} />}
-      <box flexDirection="column" flexGrow={1}>
-        {error ? (
-          <text fg="red">{error}</text>
-        ) : loading ? (
-          <text>Loading...</text>
-        ) : viewMode === 'detail' && currentDetailIssue ? (
-          <DetailView
-            issue={currentDetailIssue}
-            allIssues={issues}
-            selectedChildIndex={selectedChildIndex}
-          />
-        ) : visibleIssues.length === 0 ? (
-          <text fg="gray">No issues found</text>
-        ) : (
-          <IssueTree
-            issues={issues}
-            visibleIssues={visibleIssues}
-            expandedIds={expandedIds}
-            scrollOffset={scrollOffset}
-            treeHeight={treeHeight}
-            selectedIndex={selectedIndex}
-          />
+    <ThemeContext.Provider value={currentTheme}>
+      <box flexDirection="column" height={terminalHeight}>
+        {viewMode === 'tree' && <FilterBar filter={filter} lastRefresh={lastRefresh} />}
+        <box flexDirection="column" flexGrow={1}>
+          {error ? (
+            <text fg={currentTheme.error}>{error}</text>
+          ) : loading ? (
+            <text>Loading...</text>
+          ) : viewMode === 'detail' && currentDetailIssue ? (
+            <DetailView
+              issue={currentDetailIssue}
+              allIssues={issues}
+              selectedChildIndex={selectedChildIndex}
+            />
+          ) : visibleIssues.length === 0 ? (
+            <text fg={currentTheme.textMuted}>No issues found</text>
+          ) : (
+            <IssueTree
+              issues={issues}
+              visibleIssues={visibleIssues}
+              expandedIds={expandedIds}
+              scrollOffset={scrollOffset}
+              treeHeight={treeHeight}
+              selectedIndex={selectedIndex}
+            />
+          )}
+        </box>
+        {viewMode === 'tree' && (
+          <StatusBar issues={issues} scrollInfo={{ offset: scrollOffset, visible: treeHeight, total: visibleIssues.length }} workspaceRoot={workspaceRoot} />
         )}
       </box>
-      {viewMode === 'tree' && (
-        <StatusBar issues={issues} scrollInfo={{ offset: scrollOffset, visible: treeHeight, total: visibleIssues.length }} workspaceRoot={workspaceRoot} />
-      )}
-    </box>
+    </ThemeContext.Provider>
   );
 }

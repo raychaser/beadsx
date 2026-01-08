@@ -4,6 +4,7 @@ import { useTerminalDimensions } from '@opentui/react';
 import { useEffect, useState } from 'react';
 import type { FilterMode } from '../../core';
 import { formatTimeAgo } from '../../core';
+import { useTheme } from '../theme';
 
 interface FilterBarProps {
   filter: FilterMode;
@@ -20,6 +21,7 @@ const FILTERS: { mode: FilterMode; label: string }[] = [
 const DEFAULT_TERMINAL_WIDTH = 80;
 
 export function FilterBar({ filter, lastRefresh }: FilterBarProps) {
+  const theme = useTheme();
   const { width: rawWidth } = useTerminalDimensions();
   // Use sensible fallback if terminal width is invalid (non-TTY, initialization)
   const terminalWidth = typeof rawWidth === 'number' && rawWidth > 0 ? rawWidth : DEFAULT_TERMINAL_WIDTH;
@@ -56,20 +58,20 @@ export function FilterBar({ filter, lastRefresh }: FilterBarProps) {
   return (
     <box>
       <text>
-        <span> Filter: </span>
+        <span fg={theme.textMuted}> Filter: </span>
         {FILTERS.map((f, i) => (
           <span key={f.mode}>
             {i > 0 && <span> </span>}
             {f.mode === filter ? (
-              <span fg="cyan" bold>
+              <span fg={theme.accent} bold>
                 [{f.label}]
               </span>
             ) : (
-              <span fg="gray">{f.label}</span>
+              <span fg={theme.textMuted}>{f.label}</span>
             )}
           </span>
         ))}
-        <span fg="gray">{padding}↻ {refreshAgo}</span>
+        <span fg={theme.textMuted}>{padding}↻ {refreshAgo}</span>
       </text>
     </box>
   );

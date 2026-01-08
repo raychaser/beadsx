@@ -39,8 +39,13 @@ Keyboard shortcuts:
   j/k or arrows  Navigate up/down
   h/l or arrows  Collapse/expand
   1-4            Switch filter (All/Open/Ready/Recent)
+  t              Toggle dark/light theme
   r              Refresh
-  q              Quit`
+  q              Quit
+
+Environment variables:
+  BDX_THEME      Set to 'dark' or 'light' to override auto-detection
+                 (Auto-detects from COLORFGBG if set by terminal)`
   )
   .parse(commanderArgv);
 

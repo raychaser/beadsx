@@ -9,6 +9,7 @@ import {
   STATUS_ICONS,
   TYPE_ICONS,
 } from './constants';
+import { theme } from './theme';
 
 describe('STATUS_ICONS', () => {
   it('has icons for all standard statuses', () => {
@@ -101,21 +102,21 @@ describe('getStatusColor', () => {
     warnSpy.mockRestore();
   });
 
-  it('returns correct color for valid statuses', () => {
-    expect(getStatusColor('open')).toBe('white');
-    expect(getStatusColor('in_progress')).toBe('yellow');
-    expect(getStatusColor('blocked')).toBe('red');
-    expect(getStatusColor('closed')).toBe('green');
-    expect(getStatusColor('tombstone')).toBe('gray');
+  it('returns correct theme colors for valid statuses', () => {
+    expect(getStatusColor('open')).toBe(theme.statusOpen);
+    expect(getStatusColor('in_progress')).toBe(theme.statusInProgress);
+    expect(getStatusColor('blocked')).toBe(theme.statusBlocked);
+    expect(getStatusColor('closed')).toBe(theme.statusClosed);
+    expect(getStatusColor('tombstone')).toBe(theme.textMuted);
   });
 
-  it('returns magenta for invalid status to make it visible', () => {
-    expect(getStatusColor('invalid')).toBe('magenta');
-    expect(warnSpy).toHaveBeenCalledWith('[cli] Unknown status "invalid" for color, using magenta');
+  it('returns statusUnknown for invalid status to make it visible', () => {
+    expect(getStatusColor('invalid')).toBe(theme.statusUnknown);
+    expect(warnSpy).toHaveBeenCalledWith('[cli] Unknown status "invalid" for color, using unknown');
   });
 
-  it('returns magenta for empty string', () => {
-    expect(getStatusColor('')).toBe('magenta');
+  it('returns statusUnknown for empty string', () => {
+    expect(getStatusColor('')).toBe(theme.statusUnknown);
     expect(warnSpy).toHaveBeenCalled();
   });
 });

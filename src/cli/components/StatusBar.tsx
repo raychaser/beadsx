@@ -2,6 +2,7 @@
 
 import { useTerminalDimensions } from '@opentui/react';
 import type { BeadsIssue } from '../../core';
+import { useTheme } from '../theme';
 
 interface ScrollInfo {
   offset: number;
@@ -18,6 +19,7 @@ interface StatusBarProps {
 const DEFAULT_TERMINAL_WIDTH = 80;
 
 export function StatusBar({ issues, scrollInfo, workspaceRoot }: StatusBarProps) {
+  const theme = useTheme();
   const { width: rawWidth } = useTerminalDimensions();
   const terminalWidth = typeof rawWidth === 'number' && rawWidth > 0 ? rawWidth : DEFAULT_TERMINAL_WIDTH;
 
@@ -41,19 +43,20 @@ export function StatusBar({ issues, scrollInfo, workspaceRoot }: StatusBarProps)
   const summaryPaddingLen = Math.max(1, terminalWidth - summaryContent.length - rightContent.length);
   const summaryPadding = ' '.repeat(summaryPaddingLen);
 
-  // Build cwd line if provided
-  const cwdLine = workspaceRoot ? ` ${workspaceRoot}` : '';
+  // Build cwd line with theme indicator on right
+  const cwdContent = workspaceRoot ? ` ${workspaceRoot}` : '';
+  const themeIndicator = `[${theme.mode}]`;
+  const cwdPaddingLen = Math.max(1, terminalWidth - cwdContent.length - themeIndicator.length);
+  const cwdPadding = ' '.repeat(cwdPaddingLen);
 
   return (
     <box flexDirection="column">
       <text>
-        <span fg="gray">{summaryContent}{summaryPadding}{rightContent}</span>
+        <span fg={theme.textMuted}>{summaryContent}{summaryPadding}{rightContent}</span>
       </text>
-      {cwdLine && (
-        <text>
-          <span fg="gray">{cwdLine}</span>
-        </text>
-      )}
+      <text>
+        <span fg={theme.textMuted}>{cwdContent}{cwdPadding}{themeIndicator}</span>
+      </text>
     </box>
   );
 }
