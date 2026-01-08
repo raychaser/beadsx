@@ -7,6 +7,7 @@ import { Command } from 'commander';
 import * as path from 'node:path';
 import { configure, type Logger } from '../core';
 import { App } from './App';
+import { detectThemeModeAsync } from './theme';
 import { validateBeadsInitialized, validateWorkspace } from './validation';
 import pkg from '../../package.json';
 
@@ -39,8 +40,13 @@ Keyboard shortcuts:
   j/k or arrows  Navigate up/down
   h/l or arrows  Collapse/expand
   1-4            Switch filter (All/Open/Ready/Recent)
+  t              Toggle dark/light theme
   r              Refresh
-  q              Quit`
+  q              Quit
+
+Environment variables:
+  BDX_THEME      Set to 'dark' or 'light' to override auto-detection
+                 (Auto-detects from COLORFGBG if set by terminal)`
   )
   .parse(commanderArgv);
 
@@ -85,6 +91,9 @@ async function main() {
     process.exit(beadsResult.exitCode);
   }
 
+  // Detect theme BEFORE creating renderer (OSC 11 needs stdin before renderer takes it)
+  const initialTheme = await detectThemeModeAsync();
+
   const renderer = await createCliRenderer({
     exitOnCtrlC: true,
     onDestroy: () => process.exit(0),
@@ -95,7 +104,7 @@ async function main() {
     // process.exit(0) will be called by onDestroy callback
   };
 
-  createRoot(renderer).render(<App workspaceRoot={workspaceRoot} onQuit={handleQuit} />);
+  createRoot(renderer).render(<App workspaceRoot={workspaceRoot} initialTheme={initialTheme} onQuit={handleQuit} />);
 }
 
 main().catch((err) => {

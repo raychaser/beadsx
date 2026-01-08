@@ -1,6 +1,7 @@
 // Shared constants for CLI components
 
 import type { IssueStatus, IssueType } from '../core';
+import type { Theme } from './theme';
 
 // Status indicators with proper type safety
 export const STATUS_ICONS: Record<IssueStatus, string> = {
@@ -59,22 +60,22 @@ export function getShortId(id: string): string {
 
 /**
  * Get status color for terminal display.
- * Returns magenta for unknown status values to make data issues visible.
+ * Uses theme-aware colors for dark/light mode support.
  */
-export function getStatusColor(status: string): string {
+export function getStatusColor(status: string, theme: Theme): string {
   switch (status) {
     case 'closed':
-      return 'green';
+      return theme.statusClosed;
     case 'in_progress':
-      return 'yellow';
+      return theme.statusInProgress;
     case 'blocked':
-      return 'red';
+      return theme.statusBlocked;
     case 'open':
-      return 'white';
+      return theme.statusOpen;
     case 'tombstone':
-      return 'gray'; // Soft-deleted - should be filtered out before display
+      return theme.textMuted; // Soft-deleted - should be filtered out before display
     default:
-      console.warn(`[cli] Unknown status "${status}" for color, using magenta`);
-      return 'magenta';
+      console.warn(`[cli] Unknown status "${status}" for color, using unknown`);
+      return theme.statusUnknown;
   }
 }

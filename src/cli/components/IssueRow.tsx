@@ -4,6 +4,7 @@ import { useTerminalDimensions } from '@opentui/react';
 import type { BeadsIssue } from '../../core';
 import { formatTimeAgo, truncateTitle } from '../../core';
 import { getShortId, getStatusColor, getStatusIcon, getTypeIcon } from '../constants';
+import { useTheme } from '../theme';
 
 interface IssueRowProps {
   issue: BeadsIssue;
@@ -24,16 +25,21 @@ export function IssueRow({
   isSelected,
   isLastChild,
 }: IssueRowProps) {
+  const theme = useTheme();
   const { width: rawWidth } = useTerminalDimensions();
   // Use sensible fallback if terminal width is invalid (non-TTY, initialization)
   const terminalWidth = typeof rawWidth === 'number' && rawWidth > 0 ? rawWidth : DEFAULT_TERMINAL_WIDTH;
+
+  // In light mode, we need high contrast (white text on blue bg)
+  // In dark mode, cyan on blue is readable, so keep original colors
+  const isLightMode = theme.mode === 'light';
 
   // Build tree prefix
   const prefix = buildTreePrefix(depth, hasChildren, isExpanded, isLastChild);
 
   // Status icon and color
   const statusIcon = getStatusIcon(issue.status);
-  const statusColor = getStatusColor(issue.status);
+  const statusColor = getStatusColor(issue.status, theme);
 
   // Type icon
   const typeIcon = getTypeIcon(issue.issue_type);
@@ -76,23 +82,30 @@ export function IssueRow({
   const paddingLen = Math.max(1, availableWidth - titleDisplayLen);
   const padding = ' '.repeat(paddingLen);
 
-  // Build the row
-  const bgColor = isSelected ? 'blue' : undefined;
+  // Build the row - use inverse colors when selected in light mode for better contrast
+  // In dark mode, keep original colors as they're readable on blue background
+  const bgColor = isSelected ? theme.selectionBg : undefined;
+  const needsInverse = isSelected && isLightMode;
+  const textColor = needsInverse ? theme.textInverse : theme.textPrimary;
+  const mutedColor = needsInverse ? theme.textInverse : theme.textMuted;
+  const accentColor = needsInverse ? theme.textInverse : theme.accent;
+  // Status icon: use inverse when selected in light mode for open status
+  const statusIconColor = needsInverse && issue.status === 'open' ? theme.textInverse : statusColor;
 
   return (
     <box style={{ height: 1 }}>
       <text bg={bgColor}>
-        <span fg="gray">{prefix}</span>
-        <span fg={statusColor}>{statusIcon}</span>
+        <span fg={mutedColor}>{prefix}</span>
+        <span fg={statusIconColor}>{statusIcon}</span>
         <span> </span>
-        <span fg="cyan">{priorityStr}</span>
+        <span fg={accentColor}>{priorityStr}</span>
         <span> </span>
         <span>{typeIcon}</span>
         <span> </span>
-        <span fg="gray">{shortId}</span>
+        <span fg={mutedColor}>{shortId}</span>
         <span> </span>
-        <span fg={issue.status === 'closed' ? 'gray' : 'white'}>{displayTitle}</span>
-        {timeAgo && <span fg="gray">{padding}({timeAgo})</span>}
+        <span fg={issue.status === 'closed' ? mutedColor : textColor}>{displayTitle}</span>
+        {timeAgo && <span fg={mutedColor}>{padding}({timeAgo})</span>}
       </text>
     </box>
   );
