@@ -6,14 +6,14 @@ import { getShortId, getStatusColor, getStatusIcon, getTypeIcon } from '../const
 import { useTheme } from '../theme';
 
 interface DetailViewProps {
-  issue: BeadsIssue;
-  allIssues: BeadsIssue[];
-  selectedChildIndex: number;
+  readonly issue: BeadsIssue;
+  readonly allIssues: readonly BeadsIssue[];
+  readonly selectedChildIndex: number;
 }
 
 interface ChildIssueRowProps {
-  child: BeadsIssue;
-  isSelected: boolean;
+  readonly child: BeadsIssue;
+  readonly isSelected: boolean;
 }
 
 /**
@@ -115,7 +115,7 @@ export function DetailView({ issue, allIssues, selectedChildIndex }: DetailViewP
       <box style={{ height: 1 }}>
         <text>
           <span fg={theme.textMuted}>Type: </span>
-          <span>{typeIcon} {issue.issue_type}</span>
+          <span fg={theme.textPrimary}>{typeIcon} {issue.issue_type}</span>
           <span>    </span>
           <span fg={theme.textMuted}>Status: </span>
           <span fg={statusColor}>{statusIcon} {issue.status.replace('_', ' ')}</span>
@@ -127,26 +127,26 @@ export function DetailView({ issue, allIssues, selectedChildIndex }: DetailViewP
           <span fg={theme.accent}>P{issue.priority}</span>
           <span>    </span>
           <span fg={theme.textMuted}>Assignee: </span>
-          <span>{issue.assignee || 'Unassigned'}</span>
+          <span fg={theme.textPrimary}>{issue.assignee || 'Unassigned'}</span>
         </text>
       </box>
       <box style={{ height: 1 }}>
         <text>
           <span fg={theme.textMuted}>Created: </span>
-          <span>{formatDate(issue.created_at)}</span>
+          <span fg={theme.textPrimary}>{formatDate(issue.created_at)}</span>
         </text>
       </box>
       <box style={{ height: 1 }}>
         <text>
           <span fg={theme.textMuted}>Updated: </span>
-          <span>{formatDate(issue.updated_at)}</span>
+          <span fg={theme.textPrimary}>{formatDate(issue.updated_at)}</span>
         </text>
       </box>
       {issue.closed_at && (
         <box style={{ height: 1 }}>
           <text>
             <span fg={theme.textMuted}>Closed: </span>
-            <span>{formatDate(issue.closed_at)}</span>
+            <span fg={theme.textPrimary}>{formatDate(issue.closed_at)}</span>
           </text>
         </box>
       )}
@@ -154,7 +154,7 @@ export function DetailView({ issue, allIssues, selectedChildIndex }: DetailViewP
         <box style={{ height: 1 }}>
           <text>
             <span fg={theme.textMuted}>Labels: </span>
-            <span>{issue.labels.join(', ')}</span>
+            <span fg={theme.textPrimary}>{issue.labels.join(', ')}</span>
           </text>
         </box>
       )}
@@ -174,7 +174,7 @@ export function DetailView({ issue, allIssues, selectedChildIndex }: DetailViewP
             <text fg={theme.border}>────────────────────────────────────────</text>
           </box>
           <box>
-            <text>{issue.description}</text>
+            <text fg={theme.textPrimary}>{issue.description}</text>
           </box>
         </>
       )}

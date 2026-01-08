@@ -88,6 +88,41 @@ describe('detectThemeMode', () => {
     const { detectThemeMode } = await resetModuleAndImport();
     expect(detectThemeMode()).toBe('dark');
   });
+
+  it('defaults to dark for COLORFGBG with bg > 15 (unusual value)', async () => {
+    process.env.COLORFGBG = '0;200';
+    const { detectThemeMode } = await resetModuleAndImport();
+    expect(detectThemeMode()).toBe('dark');
+  });
+
+  it('logs warning for invalid BDX_THEME value', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    process.env.BDX_THEME = 'invalid';
+    const { detectThemeMode } = await resetModuleAndImport();
+    detectThemeMode();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid BDX_THEME value'));
+    warnSpy.mockRestore();
+  });
+
+  it('logs debug for invalid COLORFGBG format', async () => {
+    const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    process.env.COLORFGBG = 'invalid';
+    const { detectThemeMode } = await resetModuleAndImport();
+    detectThemeMode();
+    expect(debugSpy).toHaveBeenCalledWith(expect.stringContaining('Could not parse COLORFGBG'));
+    debugSpy.mockRestore();
+  });
+
+  it('logs debug for unusual COLORFGBG background value', async () => {
+    const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    process.env.COLORFGBG = '0;200';
+    const { detectThemeMode } = await resetModuleAndImport();
+    detectThemeMode();
+    expect(debugSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Unusual COLORFGBG background value'),
+    );
+    debugSpy.mockRestore();
+  });
 });
 
 describe('theme objects', () => {
@@ -115,6 +150,24 @@ describe('theme objects', () => {
     expect(lightTheme.statusInProgress).toBe('yellow');
     expect(lightTheme.statusBlocked).toBe('red');
     expect(lightTheme.error).toBe('red');
+  });
+
+  it('dark theme is frozen (immutable at runtime)', async () => {
+    const { darkTheme } = await resetModuleAndImport();
+    expect(Object.isFrozen(darkTheme)).toBe(true);
+  });
+
+  it('light theme is frozen (immutable at runtime)', async () => {
+    const { lightTheme } = await resetModuleAndImport();
+    expect(Object.isFrozen(lightTheme)).toBe(true);
+  });
+
+  it('throws when trying to modify frozen theme', async () => {
+    const { darkTheme } = await resetModuleAndImport();
+    expect(() => {
+      // @ts-expect-error - intentionally testing runtime immutability
+      darkTheme.mode = 'light';
+    }).toThrow(TypeError);
   });
 });
 
@@ -229,6 +282,12 @@ describe('getTheme', () => {
     const { getTheme, lightTheme } = await resetModuleAndImport();
     expect(getTheme('light')).toBe(lightTheme);
   });
+
+  it('returns frozen (immutable) theme objects', async () => {
+    const { getTheme } = await resetModuleAndImport();
+    expect(Object.isFrozen(getTheme('dark'))).toBe(true);
+    expect(Object.isFrozen(getTheme('light'))).toBe(true);
+  });
 });
 
 describe('parseOsc11Response', () => {
@@ -291,5 +350,29 @@ describe('parseOsc11Response', () => {
     // Response might have extra characters from buffering
     const result = parseOsc11Response('garbage\x1b]11;rgb:ffff/ffff/ffff\x07more');
     expect(result).toBe('light');
+  });
+
+  it('returns null for non-hex characters in response', async () => {
+    const { parseOsc11Response } = await resetModuleAndImport();
+    // Non-hex characters don't match the regex, returning null
+    const result = parseOsc11Response('\x1b]11;rgb:gggg/ffff/ffff\x07');
+    expect(result).toBeNull();
+  });
+
+  it('returns null when any color component has non-hex characters', async () => {
+    const { parseOsc11Response } = await resetModuleAndImport();
+    // Second component has non-hex characters
+    const result = parseOsc11Response('\x1b]11;rgb:ffff/xxxx/ffff\x07');
+    expect(result).toBeNull();
+  });
+
+  it('handles edge case of regex matching but parseInt failing', async () => {
+    // The regex [0-9a-fA-F]+ ensures only valid hex reaches parseHexColor.
+    // This test verifies the overall behavior - invalid format returns null.
+    const { parseOsc11Response } = await resetModuleAndImport();
+    // Verify regex correctly filters invalid hex
+    expect(parseOsc11Response('\x1b]11;rgb:zzzz/ffff/ffff\x07')).toBeNull();
+    // Verify valid hex is processed correctly
+    expect(parseOsc11Response('\x1b]11;rgb:ffff/ffff/ffff\x07')).toBe('light');
   });
 });

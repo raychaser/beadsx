@@ -5,24 +5,24 @@ import { createContext, useContext } from 'react';
 export type ThemeMode = 'dark' | 'light';
 
 export interface Theme {
-  mode: ThemeMode;
+  readonly mode: ThemeMode;
   // Text colors
-  textPrimary: string | undefined; // Main content (undefined = terminal default)
-  textMuted: string; // De-emphasized text
-  textInverse: string; // Text on highlighted backgrounds
+  readonly textPrimary: string | undefined; // Main content (undefined = terminal default)
+  readonly textMuted: string; // De-emphasized text
+  readonly textInverse: string; // Text on highlighted backgrounds
   // UI chrome
-  border: string; // Tree lines, separators
+  readonly border: string; // Tree lines, separators
   // Interactive
-  accent: string; // Active indicators, emphasis
-  selectionBg: string; // Selected row background
+  readonly accent: string; // Active indicators, emphasis
+  readonly selectionBg: string; // Selected row background
   // Status colors
-  statusOpen: string; // Open issues
-  statusInProgress: string; // In-progress issues
-  statusBlocked: string; // Blocked issues
-  statusClosed: string; // Closed issues
-  statusUnknown: string; // Unknown/error states
+  readonly statusOpen: string; // Open issues
+  readonly statusInProgress: string; // In-progress issues
+  readonly statusBlocked: string; // Blocked issues
+  readonly statusClosed: string; // Closed issues
+  readonly statusUnknown: string; // Unknown/error states
   // Feedback
-  error: string; // Error messages
+  readonly error: string; // Error messages
 }
 
 /**
@@ -119,13 +119,13 @@ export function calculateLuminance(r: number, g: number, b: number): number {
 /**
  * Parse a hex color component from OSC 11 response.
  * Handles both 2-digit (00-FF) and 4-digit (0000-FFFF) formats.
- * Returns normalized value in range 0-1, or 0 if parsing fails.
+ * Returns normalized value in range 0-1, or null if parsing fails.
  */
-function parseHexColor(hex: string): number {
+function parseHexColor(hex: string): number | null {
   const val = parseInt(hex, 16);
   if (Number.isNaN(val)) {
-    console.debug(`[theme] Invalid hex color component: "${hex}", defaulting to 0`);
-    return 0;
+    console.debug(`[theme] Invalid hex color component: "${hex}"`);
+    return null;
   }
   const max = hex.length === 2 ? 255 : 65535;
   return val / max;
@@ -160,8 +160,9 @@ async function queryTerminalBackground(
       if (process.stdin.isTTY && process.stdin.isRaw !== wasRaw) {
         try {
           process.stdin.setRawMode(wasRaw);
-        } catch {
+        } catch (err) {
           // Ignore errors restoring raw mode (stream may be closed)
+          console.debug(`[theme] Could not restore raw mode: ${err}`);
         }
       }
     };
@@ -179,11 +180,15 @@ async function queryTerminalBackground(
       const response = data.toString();
       const match = response.match(/rgb:([0-9a-fA-F]+)\/([0-9a-fA-F]+)\/([0-9a-fA-F]+)/);
       if (match) {
-        resolve({
-          r: parseHexColor(match[1]),
-          g: parseHexColor(match[2]),
-          b: parseHexColor(match[3]),
-        });
+        const r = parseHexColor(match[1]);
+        const g = parseHexColor(match[2]);
+        const b = parseHexColor(match[3]);
+        if (r === null || g === null || b === null) {
+          console.debug('[theme] Invalid color values in OSC 11 response');
+          resolve(null);
+          return;
+        }
+        resolve({ r, g, b });
       } else {
         console.debug('[theme] Received invalid OSC 11 response, ignoring');
         resolve(null);
@@ -195,14 +200,14 @@ async function queryTerminalBackground(
       if (process.stdin.isTTY) {
         process.stdin.setRawMode(true);
       }
-    } catch {
-      console.debug('[theme] Failed to set raw mode, skipping OSC 11 query');
+    } catch (err) {
+      console.debug(`[theme] Failed to set raw mode: ${err}, skipping OSC 11 query`);
       cleanup();
       resolve(null);
       return;
     }
 
-    process.stdin.on('data', onData);
+    process.stdin.once('data', onData);
 
     // Send OSC 11 query (BEL terminator works more broadly than ST)
     const written = process.stdout.write('\x1b]11;?\x07');
@@ -255,6 +260,9 @@ export function parseOsc11Response(response: string): ThemeMode | null {
   const r = parseHexColor(match[1]);
   const g = parseHexColor(match[2]);
   const b = parseHexColor(match[3]);
+  if (r === null || g === null || b === null) {
+    return null;
+  }
   const luminance = calculateLuminance(r, g, b);
 
   return luminance > 0.5 ? 'light' : 'dark';
@@ -272,7 +280,7 @@ export const theme: Theme = initialThemeMode === 'light' ? lightTheme : darkThem
 /**
  * Get theme object for a given mode.
  */
-export function getTheme(mode: ThemeMode): Theme {
+export function getTheme(mode: ThemeMode): Readonly<Theme> {
   return mode === 'light' ? lightTheme : darkTheme;
 }
 
