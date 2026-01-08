@@ -29,7 +29,7 @@ export interface Theme {
  * Dark theme - designed for dark terminal backgrounds.
  * Uses terminal default for primary text to ensure native appearance.
  */
-export const darkTheme: Theme = {
+export const darkTheme: Readonly<Theme> = Object.freeze({
   mode: 'dark',
   textPrimary: undefined, // Use terminal's native foreground
   textMuted: 'gray',
@@ -43,13 +43,13 @@ export const darkTheme: Theme = {
   statusClosed: 'green',
   statusUnknown: 'magenta',
   error: 'red',
-};
+});
 
 /**
  * Light theme - designed for light terminal backgrounds.
  * Swaps some colors to maintain contrast and readability.
  */
-export const lightTheme: Theme = {
+export const lightTheme: Readonly<Theme> = Object.freeze({
   mode: 'light',
   textPrimary: 'black', // Explicit black for light backgrounds
   textMuted: 'gray',
@@ -63,7 +63,7 @@ export const lightTheme: Theme = {
   statusClosed: 'green',
   statusUnknown: 'magenta',
   error: 'red',
-};
+});
 
 /**
  * Detect terminal theme from environment variables.
@@ -78,6 +78,11 @@ export function detectThemeMode(): ThemeMode {
   const bdxTheme = process.env.BDX_THEME?.toLowerCase();
   if (bdxTheme === 'dark') return 'dark';
   if (bdxTheme === 'light') return 'light';
+  if (bdxTheme) {
+    console.warn(
+      `[theme] Invalid BDX_THEME value "${process.env.BDX_THEME}", expected "dark" or "light"`,
+    );
+  }
 
   // 2. COLORFGBG detection (format: "fg;bg" or "fg;bg;extra")
   // ANSI colors: 0-6 and 8 are dark backgrounds, 7 and 9-15 are light backgrounds
@@ -90,6 +95,10 @@ export function detectThemeMode(): ThemeMode {
       if (bg === 7 || (bg >= 9 && bg <= 15)) return 'light';
       // ANSI colors 0-6 and 8 are dark
       if (bg <= 8) return 'dark';
+      // Unusual value outside expected range
+      console.debug(`[theme] Unusual COLORFGBG background value: ${bg}, defaulting to dark`);
+    } else {
+      console.debug(`[theme] Could not parse COLORFGBG: "${colorFgBg}", ignoring`);
     }
   }
 
@@ -110,10 +119,14 @@ export function calculateLuminance(r: number, g: number, b: number): number {
 /**
  * Parse a hex color component from OSC 11 response.
  * Handles both 2-digit (00-FF) and 4-digit (0000-FFFF) formats.
- * Returns normalized value in range 0-1.
+ * Returns normalized value in range 0-1, or 0 if parsing fails.
  */
 function parseHexColor(hex: string): number {
   const val = parseInt(hex, 16);
+  if (Number.isNaN(val)) {
+    console.debug(`[theme] Invalid hex color component: "${hex}", defaulting to 0`);
+    return 0;
+  }
   const max = hex.length === 2 ? 255 : 65535;
   return val / max;
 }
@@ -134,22 +147,30 @@ async function queryTerminalBackground(
   }
 
   return new Promise((resolve) => {
+    // Save raw mode state to restore later
+    const wasRaw = process.stdin.isRaw;
+    let resolved = false;
+
+    const cleanup = () => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timeout);
+      process.stdin.off('data', onData);
+      // Restore original raw mode state
+      if (process.stdin.isTTY && process.stdin.isRaw !== wasRaw) {
+        try {
+          process.stdin.setRawMode(wasRaw);
+        } catch {
+          // Ignore errors restoring raw mode (stream may be closed)
+        }
+      }
+    };
+
     const timeout = setTimeout(() => {
+      console.debug('[theme] OSC 11 query timed out, falling back to COLORFGBG/default');
       cleanup();
       resolve(null);
     }, timeoutMs);
-
-    // Save raw mode state to restore later
-    const wasRaw = process.stdin.isRaw;
-
-    const cleanup = () => {
-      clearTimeout(timeout);
-      process.stdin.removeListener('data', onData);
-      // Restore original raw mode state
-      if (process.stdin.isTTY && process.stdin.isRaw !== wasRaw) {
-        process.stdin.setRawMode(wasRaw);
-      }
-    };
 
     const onData = (data: Buffer) => {
       cleanup();
@@ -164,18 +185,32 @@ async function queryTerminalBackground(
           b: parseHexColor(match[3]),
         });
       } else {
+        console.debug('[theme] Received invalid OSC 11 response, ignoring');
         resolve(null);
       }
     };
 
     // Enable raw mode to read terminal response
-    if (process.stdin.isTTY) {
-      process.stdin.setRawMode(true);
+    try {
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(true);
+      }
+    } catch {
+      console.debug('[theme] Failed to set raw mode, skipping OSC 11 query');
+      cleanup();
+      resolve(null);
+      return;
     }
-    process.stdin.once('data', onData);
+
+    process.stdin.on('data', onData);
 
     // Send OSC 11 query (BEL terminator works more broadly than ST)
-    process.stdout.write('\x1b]11;?\x07');
+    const written = process.stdout.write('\x1b]11;?\x07');
+    if (!written) {
+      console.debug('[theme] stdout buffer full, skipping OSC 11 query');
+      cleanup();
+      resolve(null);
+    }
   });
 }
 
