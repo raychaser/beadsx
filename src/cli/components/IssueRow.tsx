@@ -39,7 +39,7 @@ export function IssueRow({
 
   // Status icon and color
   const statusIcon = getStatusIcon(issue.status);
-  const statusColor = getStatusColor(issue.status);
+  const statusColor = getStatusColor(issue.status, theme);
 
   // Type icon
   const typeIcon = getTypeIcon(issue.issue_type);

@@ -21,13 +21,14 @@ import { type ThemeMode, ThemeContext, detectThemeMode, getTheme } from './theme
 
 interface AppProps {
   workspaceRoot: string;
+  initialTheme?: ThemeMode;
   onQuit?: () => void;
 }
 
 const REFRESH_INTERVAL_MS = 5000; // 5 seconds
 const DEFAULT_TERMINAL_HEIGHT = 24;
 
-export function App({ workspaceRoot, onQuit }: AppProps) {
+export function App({ workspaceRoot, initialTheme, onQuit }: AppProps) {
   const { height: rawHeight } = useTerminalDimensions();
   // Use sensible fallback if terminal height is invalid
   const terminalHeight = typeof rawHeight === 'number' && rawHeight > 0 ? rawHeight : DEFAULT_TERMINAL_HEIGHT;
@@ -61,7 +62,8 @@ export function App({ workspaceRoot, onQuit }: AppProps) {
   const previousFilterRef = useRef<FilterMode>(filter);
 
   // Theme state - can be toggled with 't' key
-  const [themeMode, setThemeMode] = useState<ThemeMode>(detectThemeMode);
+  // Use initialTheme if provided (from OSC 11 async detection), else fall back to sync detection
+  const [themeMode, setThemeMode] = useState<ThemeMode>(initialTheme ?? detectThemeMode);
   const currentTheme = getTheme(themeMode);
 
   // Calculate available height for issue tree (terminal - FilterBar - StatusBar)

@@ -7,6 +7,7 @@ import { Command } from 'commander';
 import * as path from 'node:path';
 import { configure, type Logger } from '../core';
 import { App } from './App';
+import { detectThemeModeAsync } from './theme';
 import { validateBeadsInitialized, validateWorkspace } from './validation';
 import pkg from '../../package.json';
 
@@ -90,6 +91,9 @@ async function main() {
     process.exit(beadsResult.exitCode);
   }
 
+  // Detect theme BEFORE creating renderer (OSC 11 needs stdin before renderer takes it)
+  const initialTheme = await detectThemeModeAsync();
+
   const renderer = await createCliRenderer({
     exitOnCtrlC: true,
     onDestroy: () => process.exit(0),
@@ -100,7 +104,7 @@ async function main() {
     // process.exit(0) will be called by onDestroy callback
   };
 
-  createRoot(renderer).render(<App workspaceRoot={workspaceRoot} onQuit={handleQuit} />);
+  createRoot(renderer).render(<App workspaceRoot={workspaceRoot} initialTheme={initialTheme} onQuit={handleQuit} />);
 }
 
 main().catch((err) => {

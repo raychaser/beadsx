@@ -22,7 +22,7 @@ interface ChildIssueRowProps {
 function ChildIssueRow({ child, isSelected }: ChildIssueRowProps) {
   const theme = useTheme();
   const statusIcon = getStatusIcon(child.status);
-  const statusColor = getStatusColor(child.status);
+  const statusColor = getStatusColor(child.status, theme);
   const shortId = getShortId(child.id);
   const timeAgo = child.status === 'closed' && child.closed_at ? ` (${formatTimeAgo(child.closed_at)})` : '';
 
@@ -84,7 +84,7 @@ export function DetailView({ issue, allIssues, selectedChildIndex }: DetailViewP
   const closedChildren = children.filter((c) => c.status === 'closed');
 
   const statusIcon = getStatusIcon(issue.status);
-  const statusColor = getStatusColor(issue.status);
+  const statusColor = getStatusColor(issue.status, theme);
   const typeIcon = getTypeIcon(issue.issue_type);
 
   return (

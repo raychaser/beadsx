@@ -103,20 +103,20 @@ describe('getStatusColor', () => {
   });
 
   it('returns correct theme colors for valid statuses', () => {
-    expect(getStatusColor('open')).toBe(theme.statusOpen);
-    expect(getStatusColor('in_progress')).toBe(theme.statusInProgress);
-    expect(getStatusColor('blocked')).toBe(theme.statusBlocked);
-    expect(getStatusColor('closed')).toBe(theme.statusClosed);
-    expect(getStatusColor('tombstone')).toBe(theme.textMuted);
+    expect(getStatusColor('open', theme)).toBe(theme.statusOpen);
+    expect(getStatusColor('in_progress', theme)).toBe(theme.statusInProgress);
+    expect(getStatusColor('blocked', theme)).toBe(theme.statusBlocked);
+    expect(getStatusColor('closed', theme)).toBe(theme.statusClosed);
+    expect(getStatusColor('tombstone', theme)).toBe(theme.textMuted);
   });
 
   it('returns statusUnknown for invalid status to make it visible', () => {
-    expect(getStatusColor('invalid')).toBe(theme.statusUnknown);
+    expect(getStatusColor('invalid', theme)).toBe(theme.statusUnknown);
     expect(warnSpy).toHaveBeenCalledWith('[cli] Unknown status "invalid" for color, using unknown');
   });
 
   it('returns statusUnknown for empty string', () => {
-    expect(getStatusColor('')).toBe(theme.statusUnknown);
+    expect(getStatusColor('', theme)).toBe(theme.statusUnknown);
     expect(warnSpy).toHaveBeenCalled();
   });
 });

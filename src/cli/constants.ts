@@ -1,7 +1,7 @@
 // Shared constants for CLI components
 
 import type { IssueStatus, IssueType } from '../core';
-import { theme } from './theme';
+import type { Theme } from './theme';
 
 // Status indicators with proper type safety
 export const STATUS_ICONS: Record<IssueStatus, string> = {
@@ -62,7 +62,7 @@ export function getShortId(id: string): string {
  * Get status color for terminal display.
  * Uses theme-aware colors for dark/light mode support.
  */
-export function getStatusColor(status: string): string {
+export function getStatusColor(status: string, theme: Theme): string {
   switch (status) {
     case 'closed':
       return theme.statusClosed;
