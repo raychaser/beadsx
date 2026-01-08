@@ -55,8 +55,8 @@ export const lightTheme: Theme = {
   textMuted: 'gray',
   textInverse: 'white',
   border: 'gray',
-  accent: 'blue', // Cyan is hard to read on light bg
-  selectionBg: 'blue', // Blue bg with white text
+  accent: 'blue', // Better contrast than cyan on light backgrounds
+  selectionBg: 'blue', // Selection highlight (text uses inverse color)
   statusOpen: 'black', // Explicit black for light backgrounds
   statusInProgress: 'yellow',
   statusBlocked: 'red',
@@ -103,8 +103,19 @@ export function detectThemeMode(): ThemeMode {
  * @see https://www.w3.org/TR/WCAG20/#relativeluminancedef
  */
 export function calculateLuminance(r: number, g: number, b: number): number {
-  const adjust = (c: number) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+  const adjust = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
   return 0.2126 * adjust(r) + 0.7152 * adjust(g) + 0.0722 * adjust(b);
+}
+
+/**
+ * Parse a hex color component from OSC 11 response.
+ * Handles both 2-digit (00-FF) and 4-digit (0000-FFFF) formats.
+ * Returns normalized value in range 0-1.
+ */
+function parseHexColor(hex: string): number {
+  const val = parseInt(hex, 16);
+  const max = hex.length === 2 ? 255 : 65535;
+  return val / max;
 }
 
 /**
@@ -147,17 +158,10 @@ async function queryTerminalBackground(
       const response = data.toString();
       const match = response.match(/rgb:([0-9a-fA-F]+)\/([0-9a-fA-F]+)\/([0-9a-fA-F]+)/);
       if (match) {
-        // Values are typically 4 hex digits (0000-FFFF), normalize to 0-1
-        // Some terminals use 2 digits (00-FF), handle both
-        const parseHex = (hex: string) => {
-          const val = parseInt(hex, 16);
-          const max = hex.length === 2 ? 255 : 65535;
-          return val / max;
-        };
         resolve({
-          r: parseHex(match[1]),
-          g: parseHex(match[2]),
-          b: parseHex(match[3]),
+          r: parseHexColor(match[1]),
+          g: parseHexColor(match[2]),
+          b: parseHexColor(match[3]),
         });
       } else {
         resolve(null);
@@ -213,26 +217,12 @@ export function parseOsc11Response(response: string): ThemeMode | null {
   const match = response.match(/rgb:([0-9a-fA-F]+)\/([0-9a-fA-F]+)\/([0-9a-fA-F]+)/);
   if (!match) return null;
 
-  const parseHex = (hex: string) => {
-    const val = parseInt(hex, 16);
-    const max = hex.length === 2 ? 255 : 65535;
-    return val / max;
-  };
-
-  const r = parseHex(match[1]);
-  const g = parseHex(match[2]);
-  const b = parseHex(match[3]);
+  const r = parseHexColor(match[1]);
+  const g = parseHexColor(match[2]);
+  const b = parseHexColor(match[3]);
   const luminance = calculateLuminance(r, g, b);
 
   return luminance > 0.5 ? 'light' : 'dark';
-}
-
-/**
- * Send an OSC 11 query to the terminal.
- * The response will come through stdin and needs to be captured separately.
- */
-export function sendOsc11Query(): void {
-  process.stdout.write('\x1b]11;?\x07');
 }
 
 // Initial theme mode - determined once at startup
