@@ -657,6 +657,7 @@ export function getAllAncestors(issue: BeadsIssue, allIssues: BeadsIssue[]): Bea
   const ancestors: BeadsIssue[] = [];
   const visited = new Set<string>(); // Prevent infinite loops from circular deps
   const issueMap = new Map(allIssues.map((i) => [i.id, i]));
+  const missingParents: string[] = [];
 
   const collectAncestors = (current: BeadsIssue) => {
     for (const parentId of current.parentIds) {
@@ -666,11 +667,20 @@ export function getAllAncestors(issue: BeadsIssue, allIssues: BeadsIssue[]): Bea
       if (parent) {
         ancestors.push(parent);
         collectAncestors(parent);
+      } else {
+        // Track missing parent references for debug logging
+        missingParents.push(`${current.id} -> ${parentId}`);
       }
     }
   };
 
   collectAncestors(issue);
+
+  // Debug log missing parent references (may indicate data corruption or tombstones)
+  if (missingParents.length > 0) {
+    log(`getAllAncestors: missing parent references for ${issue.id}: ${missingParents.join(', ')}`);
+  }
+
   return ancestors;
 }
 

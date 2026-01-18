@@ -1,6 +1,6 @@
 {
   "workbench.preferredDarkColorTheme": "Default Dark Modern",
-  "workbench.colorTheme": "Default Light+",
+  "workbench.colorTheme": "Default Dark+",
   "beadsx.autoReloadInterval": 4,
   "beadsx.shortIds": true
 }

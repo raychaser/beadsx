@@ -84,6 +84,13 @@ export function IssueTree({
 
   // O(1) check if issue is last child of any of its parents
   // With multiple parents, check if this issue is the last child for any of its parent IDs
+  //
+  // LIMITATION: For issues with multiple parents, this returns true if the issue is
+  // the last child of ANY parent, not the specific parent context being rendered.
+  // This means the tree connector visual (└── vs ├──) may be incorrect when an
+  // issue appears under multiple parents. A fully correct implementation would
+  // require tracking the current parent context during rendering and using
+  // position-aware lookups, which would add complexity for a minor visual edge case.
   const isLastChild = (issue: BeadsIssue): boolean => {
     if (issue.parentIds.length === 0) {
       return lastChildMap.get(undefined) === issue.id;
