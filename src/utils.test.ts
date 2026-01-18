@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { BeadsIssue, IssueType } from './core/types';
+import type { BeadsIssue, IssueStatus, IssueType } from './core/types';
 import {
   computeIssueDepths,
   DEFAULT_RECENT_WINDOW_MINUTES,
@@ -29,7 +29,7 @@ function createTestIssue(id: string, parentId?: string): BeadsIssue {
     closed_at: null,
     assignee: null,
     labels: [],
-    parentId,
+    parentIds: parentId ? [parentId] : [],
   };
 }
 
@@ -661,7 +661,7 @@ describe('shouldAutoExpandInRecent', () => {
       closed_at: opts.status === 'closed' ? '2025-01-15T12:00:00.000Z' : null,
       assignee: null,
       labels: [],
-      parentId: opts.parentId,
+      parentIds: opts.parentId ? [opts.parentId] : [],
     };
   }
 
@@ -1095,14 +1095,22 @@ describe('sortIssuesForRecentView', () => {
   const makeIssue = (
     overrides: Partial<{
       id: string;
-      status: string;
+      status: IssueStatus;
       priority: number;
       closed_at: string | null;
       updated_at: string;
       issue_type: string;
     }>,
-  ) => ({
-    status: 'open',
+  ): {
+    id: string;
+    status: IssueStatus;
+    priority: number;
+    closed_at: string | null;
+    updated_at: string;
+    issue_type: string;
+  } => ({
+    id: overrides.id ?? 'test',
+    status: 'open' as IssueStatus,
     priority: 2,
     closed_at: null,
     updated_at: '2025-01-01T00:00:00.000Z',

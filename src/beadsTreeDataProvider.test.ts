@@ -68,7 +68,11 @@ import { listFilteredIssuesWithConfig } from './beadsService';
 import { BeadsTreeDataProvider } from './beadsTreeDataProvider';
 
 // Helper to create minimal BeadsIssue for testing
-function createIssue(overrides: Partial<BeadsIssue> & { id: string }): BeadsIssue {
+// Note: parentId in overrides is converted to parentIds array
+function createIssue(
+  overrides: Partial<BeadsIssue> & { id: string } & { parentId?: string },
+): BeadsIssue {
+  const { parentId, ...rest } = overrides;
   return {
     title: `Issue ${overrides.id}`,
     description: '',
@@ -80,7 +84,8 @@ function createIssue(overrides: Partial<BeadsIssue> & { id: string }): BeadsIssu
     closed_at: null,
     assignee: null,
     labels: [],
-    ...overrides,
+    parentIds: parentId ? [parentId] : [],
+    ...rest,
   };
 }
 
