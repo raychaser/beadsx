@@ -162,7 +162,7 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
 
     // Find issues that should be expanded based on filter mode
     return this.issuesCache.filter((issue) => {
-      const hasChildren = this.issuesCache.some((child) => child.parentId === issue.id);
+      const hasChildren = this.issuesCache.some((child) => child.parentIds.includes(issue.id));
       if (!hasChildren) return false;
 
       if (this.filterMode === 'recent') {
@@ -211,7 +211,7 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
   }
 
   private hasChildren(issueId: string): boolean {
-    return this.issuesCache.some((issue) => issue.parentId === issueId);
+    return this.issuesCache.some((issue) => issue.parentIds.includes(issueId));
   }
 
   // formatTimeAgo and sortIssues imported from './utils'
@@ -379,27 +379,30 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     const sortMode: SortMode = isRecentView ? 'recent' : 'default';
 
     if (element) {
-      // Return children of this element (issues whose parentId matches this element's id)
-      const children = this.issuesCache.filter((issue) => issue.parentId === element.id);
+      // Return children of this element (issues whose parentIds includes this element's id)
+      const children = this.issuesCache.filter((issue) => issue.parentIds.includes(element.id));
       // For Recent view: use same sorting at all levels (epics first, then by status/priority)
       return isRecentView ? sortIssuesForRecentView(children) : sortIssues(children, sortMode);
     }
 
-    // Return root issues (issues with no parent OR whose parent is not in the filtered cache)
+    // Return root issues (issues with no parents OR whose parents are all not in the filtered cache)
+    const issueIdSet = new Set(this.issuesCache.map((i) => i.id));
     const roots = this.issuesCache.filter((issue) => {
-      if (!issue.parentId) return true;
-      // If parent was filtered out, treat this issue as a root
-      const parentInCache = this.issuesCache.some((i) => i.id === issue.parentId);
-      return !parentInCache;
+      if (issue.parentIds.length === 0) return true;
+      // If ALL parents were filtered out, treat this issue as a root
+      const allParentsFiltered = issue.parentIds.every((pid) => !issueIdSet.has(pid));
+      return allParentsFiltered;
     });
     // For Recent view: use same sorting at all levels (epics first, then by status/priority)
     return isRecentView ? sortIssuesForRecentView(roots) : sortIssues(roots, sortMode);
   }
 
   getParent(element: BeadsIssue): BeadsIssue | undefined {
-    if (!element.parentId) {
+    // VS Code TreeView requires a single parent for reveal functionality
+    // With multiple parents, return the first one
+    if (element.parentIds.length === 0) {
       return undefined;
     }
-    return this.issuesCache.find((issue) => issue.id === element.parentId);
+    return this.issuesCache.find((issue) => issue.id === element.parentIds[0]);
   }
 }

@@ -522,13 +522,23 @@ export async function exportIssuesWithDeps(
     const line = lines[i];
     try {
       const issue = JSON.parse(line);
-      // Compute parentId from dependencies (parent-child takes precedence, then blocks)
+      // Compute parentIds from dependencies (parent-child takes precedence, then blocks)
+      // Issues can have multiple parents - collect ALL parent-child dependencies
+      issue.parentIds = [];
       if (issue.dependencies) {
-        const parentDep =
-          issue.dependencies.find((dep: BeadsDependency) => dep.type === 'parent-child') ||
-          issue.dependencies.find((dep: BeadsDependency) => dep.type === 'blocks');
-        if (parentDep) {
-          issue.parentId = parentDep.depends_on_id;
+        for (const dep of issue.dependencies) {
+          if (dep.type === 'parent-child') {
+            issue.parentIds.push(dep.depends_on_id);
+          }
+        }
+        // Fallback: if no parent-child deps, check for blocks
+        if (issue.parentIds.length === 0) {
+          const blocksDep = issue.dependencies.find(
+            (dep: BeadsDependency) => dep.type === 'blocks',
+          );
+          if (blocksDep) {
+            issue.parentIds.push(blocksDep.depends_on_id);
+          }
         }
       }
       issues.push(issue);
@@ -631,43 +641,51 @@ export async function listFilteredIssues(
 
 /**
  * Get immediate children of an issue.
- * Returns array of issues whose parentId matches the given issue's id.
+ * Returns array of issues whose parentIds includes the given issue's id.
  */
 export function getChildren(issue: BeadsIssue, allIssues: BeadsIssue[]): BeadsIssue[] {
-  return allIssues.filter((i) => i.parentId === issue.id);
+  return allIssues.filter((i) => i.parentIds.includes(issue.id));
 }
 
 /**
- * Get all ancestors of an issue by walking up the parentId chain.
- * Returns array from root ancestor to immediate parent (excludes the issue itself).
- * Returns empty array if issue has no parent.
+ * Get all ancestors of an issue by walking up all parent chains.
+ * With multiple parents, this collects ALL unique ancestors from all parent paths.
+ * Returns array of ancestors (order not guaranteed with multiple parents).
+ * Returns empty array if issue has no parents.
  */
 export function getAllAncestors(issue: BeadsIssue, allIssues: BeadsIssue[]): BeadsIssue[] {
   const ancestors: BeadsIssue[] = [];
   const visited = new Set<string>(); // Prevent infinite loops from circular deps
+  const issueMap = new Map(allIssues.map((i) => [i.id, i]));
 
-  let current = issue;
-  while (current.parentId && !visited.has(current.parentId)) {
-    visited.add(current.parentId);
-    const parent = allIssues.find((i) => i.id === current.parentId);
-    if (!parent) break;
-    ancestors.unshift(parent); // Add to front to get root-first order
-    current = parent;
-  }
+  const collectAncestors = (current: BeadsIssue) => {
+    for (const parentId of current.parentIds) {
+      if (visited.has(parentId)) continue;
+      visited.add(parentId);
+      const parent = issueMap.get(parentId);
+      if (parent) {
+        ancestors.push(parent);
+        collectAncestors(parent);
+      }
+    }
+  };
 
+  collectAncestors(issue);
   return ancestors;
 }
 
 /**
- * Get root issues (issues with no parent OR whose parent is not in the list)
+ * Get root issues (issues with no parents OR whose parents are all not in the list)
  */
 export function getRootIssues(issues: BeadsIssue[]): BeadsIssue[] {
+  const issueIdSet = new Set(issues.map((i) => i.id));
   const orphanedIds: string[] = [];
   const roots = issues.filter((issue) => {
-    if (!issue.parentId) return true;
-    // If parent was filtered out (e.g., tombstone), treat this issue as a root
-    const parentInList = issues.some((i) => i.id === issue.parentId);
-    if (!parentInList) {
+    // No parents means it's a root
+    if (issue.parentIds.length === 0) return true;
+    // If ALL parents were filtered out (e.g., tombstone), treat this issue as a root
+    const allParentsFiltered = issue.parentIds.every((pid) => !issueIdSet.has(pid));
+    if (allParentsFiltered) {
       orphanedIds.push(issue.id);
       return true;
     }

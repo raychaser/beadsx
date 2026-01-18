@@ -92,7 +92,7 @@ export function App({ workspaceRoot, initialTheme, onQuit }: AppProps) {
 
       // Determine which issues should be auto-expanded
       const shouldExpandIssue = (issue: BeadsIssue): boolean => {
-        const hasChildren = loaded.some((i) => i.parentId === issue.id);
+        const hasChildren = loaded.some((i) => i.parentIds.includes(issue.id));
         if (!hasChildren) return false;
 
         if (filter === 'recent') {
@@ -145,7 +145,7 @@ export function App({ workspaceRoot, initialTheme, onQuit }: AppProps) {
 
         // Helper to check if an issue has any non-closed children
         const hasNonClosedChildren = (issueId: string): boolean => {
-          return loaded.some((i) => i.parentId === issueId && i.status !== 'closed');
+          return loaded.some((i) => i.parentIds.includes(issueId) && i.status !== 'closed');
         };
 
         // Clean up user-expanded IDs that no longer exist (memory cleanup)
@@ -175,7 +175,7 @@ export function App({ workspaceRoot, initialTheme, onQuit }: AppProps) {
               // Check if any child is new OR reopened
               const hasNewOrReopenedChild = loaded.some(
                 (i) =>
-                  i.parentId === collapsedId &&
+                  i.parentIds.includes(collapsedId) &&
                   (newIssueIds.has(i.id) || reopenedIssueIds.has(i.id)) &&
                   i.status !== 'closed',
               );
@@ -196,21 +196,26 @@ export function App({ workspaceRoot, initialTheme, onQuit }: AppProps) {
           const issueIdsToProcess = [...newIssueIds, ...reopenedIssueIds];
           for (const issueId of issueIdsToProcess) {
             const issue = issueMap.get(issueId);
-            if (issue?.parentId) {
+            if (issue && issue.parentIds.length > 0) {
+              // With multiple parents, traverse all parent chains
               const visited = new Set<string>(); // Prevent infinite loops from circular parent references
-              let parentId: string | undefined = issue.parentId;
-              while (parentId && !visited.has(parentId)) {
+              const queue = [...issue.parentIds];
+              while (queue.length > 0) {
+                const parentId = queue.shift()!;
+                if (visited.has(parentId)) {
+                  // Warn if cycle was detected (data corruption indicator)
+                  console.warn(
+                    `[warning] Circular parent reference detected for issue "${issueId}". ` +
+                      `This may indicate data corruption in .beads/issues.jsonl.`,
+                  );
+                  continue;
+                }
                 visited.add(parentId);
                 ancestorsToExpand.add(parentId);
                 const parent = issueMap.get(parentId);
-                parentId = parent?.parentId;
-              }
-              // Warn if cycle was detected (data corruption indicator)
-              if (parentId && visited.has(parentId)) {
-                console.warn(
-                  `[warning] Circular parent reference detected for issue "${issueId}". ` +
-                    `This may indicate data corruption in .beads/issues.jsonl.`,
-                );
+                if (parent) {
+                  queue.push(...parent.parentIds);
+                }
               }
             }
           }
@@ -306,7 +311,7 @@ export function App({ workspaceRoot, initialTheme, onQuit }: AppProps) {
     const addWithChildren = (issue: BeadsIssue, depth: number) => {
       visible.push(issue);
       if (expandedIds.has(issue.id)) {
-        const rawChildren = issues.filter((i) => i.parentId === issue.id);
+        const rawChildren = issues.filter((i) => i.parentIds.includes(issue.id));
         // For Recent view: use same sorting at all levels (epics first, then by status/priority)
         const children = isRecentView
           ? sortIssuesForRecentView(rawChildren)
@@ -446,7 +451,7 @@ export function App({ workspaceRoot, initialTheme, onQuit }: AppProps) {
       }
     } else if (key === 'right' || key === 'l') {
       if (selectedIssue) {
-        const hasChildren = issues.some((i) => i.parentId === selectedIssue.id);
+        const hasChildren = issues.some((i) => i.parentIds.includes(selectedIssue.id));
         if (hasChildren) {
           // Track user-initiated expand and clear user-collapsed state
           setUserExpandedIds((ids) => new Set(ids).add(selectedIssue.id));

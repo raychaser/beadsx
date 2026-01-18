@@ -26,7 +26,7 @@ export interface BeadsIssue {
   assignee: string | null;
   labels: string[];
   dependencies?: BeadsDependency[];
-  parentId?: string; // Computed: ID of parent issue (for parent-child dependencies)
+  parentIds: string[]; // Computed: IDs of parent issues (for parent-child dependencies). Empty = root issue.
 }
 
 export type FilterMode = 'all' | 'open' | 'ready' | 'recent';

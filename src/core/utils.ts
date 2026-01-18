@@ -5,6 +5,7 @@ import type { BeadsIssue, SortableIssue, SortMode } from './types';
 
 /**
  * Compute depth of each issue in a hierarchy.
+ * With multiple parents, uses minimum depth (closest path to root).
  * Handles circular references by breaking cycles when detected during traversal.
  * When a cycle is detected, the cyclic node returns depth 0, so the node that
  * triggered the detection gets depth 1 (e.g., self-reference A->A gets depth 1).
@@ -18,8 +19,8 @@ export function computeIssueDepths(issues: BeadsIssue[]): Map<string, number> {
     // Return cached result if already computed
     if (depthMap.has(issue.id)) return depthMap.get(issue.id)!;
 
-    // No parent means root level
-    if (!issue.parentId) {
+    // No parents means root level
+    if (issue.parentIds.length === 0) {
       depthMap.set(issue.id, 0);
       return 0;
     }
@@ -30,17 +31,22 @@ export function computeIssueDepths(issues: BeadsIssue[]): Map<string, number> {
       return 0;
     }
 
-    // Parent not in issue list - treat as root
-    const parent = issueMap.get(issue.parentId);
-    if (!parent) {
-      depthMap.set(issue.id, 0);
-      return 0;
+    visiting.add(issue.id);
+
+    // Find minimum depth among all parents
+    let minDepth = Infinity;
+    for (const parentId of issue.parentIds) {
+      const parent = issueMap.get(parentId);
+      if (parent) {
+        const parentDepth = computeDepth(parent, visiting);
+        minDepth = Math.min(minDepth, parentDepth + 1);
+      }
     }
 
-    // Recurse to parent with cycle detection
-    visiting.add(issue.id);
-    const depth = computeDepth(parent, visiting) + 1;
     visiting.delete(issue.id);
+
+    // If no valid parent found, treat as root
+    const depth = minDepth === Infinity ? 0 : minDepth;
     depthMap.set(issue.id, depth);
     return depth;
   };
@@ -189,8 +195,8 @@ export function shouldAutoExpandInRecent(
   // Mark this node as visited
   visited.add(issue.id);
 
-  // Get direct children of this issue
-  const children = allIssues.filter((i) => i.parentId === issue.id);
+  // Get direct children of this issue (issues that have this issue as a parent)
+  const children = allIssues.filter((i) => i.parentIds.includes(issue.id));
 
   // Check if any child (or its descendants) qualifies for expansion
   return children.some((child) => {
