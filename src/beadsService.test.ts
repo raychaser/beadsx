@@ -32,6 +32,7 @@ import {
 
 // Helper to create minimal BeadsIssue for testing
 // Note: parentId in overrides is converted to parentIds array
+// Can also pass parentIds directly for multiple parent tests
 function createIssue(
   overrides: Partial<BeadsIssue> & { id: string } & { parentId?: string },
 ): BeadsIssue {
@@ -47,7 +48,8 @@ function createIssue(
     closed_at: null,
     assignee: null,
     labels: [],
-    parentIds: parentId ? [parentId] : [],
+    // If parentIds already provided in rest, use it; otherwise convert parentId
+    parentIds: rest.parentIds ?? (parentId ? [parentId] : []),
     ...rest,
   };
 }
@@ -101,6 +103,44 @@ describe('getChildren', () => {
 
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe('child');
+  });
+
+  it('returns child for both parents when child has multiple parents', () => {
+    const parent1 = createIssue({ id: 'parent1' });
+    const parent2 = createIssue({ id: 'parent2' });
+    const child = createIssue({ id: 'child', parentIds: ['parent1', 'parent2'] });
+
+    const issues = [parent1, parent2, child];
+
+    // Child should appear under both parents
+    const childrenOfParent1 = getChildren(parent1, issues);
+    const childrenOfParent2 = getChildren(parent2, issues);
+
+    expect(childrenOfParent1).toHaveLength(1);
+    expect(childrenOfParent1[0].id).toBe('child');
+    expect(childrenOfParent2).toHaveLength(1);
+    expect(childrenOfParent2[0].id).toBe('child');
+  });
+
+  it('handles diamond dependency pattern (child with two parents that share grandparent)', () => {
+    // Diamond: grandparent -> parent1, parent2 -> child (child has both parent1 and parent2)
+    const grandparent = createIssue({ id: 'grandparent' });
+    const parent1 = createIssue({ id: 'parent1', parentId: 'grandparent' });
+    const parent2 = createIssue({ id: 'parent2', parentId: 'grandparent' });
+    const child = createIssue({ id: 'child', parentIds: ['parent1', 'parent2'] });
+
+    const issues = [grandparent, parent1, parent2, child];
+
+    // Child appears under both parents
+    expect(getChildren(parent1, issues).map((i) => i.id)).toEqual(['child']);
+    expect(getChildren(parent2, issues).map((i) => i.id)).toEqual(['child']);
+
+    // Both parents appear under grandparent
+    expect(
+      getChildren(grandparent, issues)
+        .map((i) => i.id)
+        .sort(),
+    ).toEqual(['parent1', 'parent2']);
   });
 });
 
@@ -205,6 +245,51 @@ describe('getAllAncestors', () => {
     expect(new Set(result.map((i) => i.id))).toEqual(
       new Set(['root', 'level1', 'level2', 'level3']),
     );
+  });
+
+  it('returns all ancestors from multiple parent paths', () => {
+    // Issue has two parents: parent1 and parent2
+    const parent1 = createIssue({ id: 'parent1' });
+    const parent2 = createIssue({ id: 'parent2' });
+    const child = createIssue({ id: 'child', parentIds: ['parent1', 'parent2'] });
+
+    const issues = [parent1, parent2, child];
+    const result = getAllAncestors(child, issues);
+
+    expect(result).toHaveLength(2);
+    expect(new Set(result.map((i) => i.id))).toEqual(new Set(['parent1', 'parent2']));
+  });
+
+  it('returns all unique ancestors in diamond dependency pattern', () => {
+    // Diamond: grandparent -> parent1, parent2 -> child
+    const grandparent = createIssue({ id: 'grandparent' });
+    const parent1 = createIssue({ id: 'parent1', parentId: 'grandparent' });
+    const parent2 = createIssue({ id: 'parent2', parentId: 'grandparent' });
+    const child = createIssue({ id: 'child', parentIds: ['parent1', 'parent2'] });
+
+    const issues = [grandparent, parent1, parent2, child];
+    const result = getAllAncestors(child, issues);
+
+    // Should include parent1, parent2, and grandparent (once, not twice)
+    expect(result).toHaveLength(3);
+    expect(new Set(result.map((i) => i.id))).toEqual(
+      new Set(['grandparent', 'parent1', 'parent2']),
+    );
+  });
+
+  it('handles multiple parents at different depths', () => {
+    // deep parent (depth 2) and shallow parent (depth 0)
+    const root = createIssue({ id: 'root' });
+    const middle = createIssue({ id: 'middle', parentId: 'root' });
+    const shallowParent = createIssue({ id: 'shallowParent' });
+    const child = createIssue({ id: 'child', parentIds: ['middle', 'shallowParent'] });
+
+    const issues = [root, middle, shallowParent, child];
+    const result = getAllAncestors(child, issues);
+
+    // Should include root (via middle), middle, and shallowParent
+    expect(result).toHaveLength(3);
+    expect(new Set(result.map((i) => i.id))).toEqual(new Set(['root', 'middle', 'shallowParent']));
   });
 });
 

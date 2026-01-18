@@ -403,6 +403,14 @@ export class BeadsTreeDataProvider implements vscode.TreeDataProvider<BeadsIssue
     if (element.parentIds.length === 0) {
       return undefined;
     }
-    return this.issuesCache.find((issue) => issue.id === element.parentIds[0]);
+    const parentId = element.parentIds[0];
+    const parent = this.issuesCache.find((issue) => issue.id === parentId);
+
+    // Debug log if parent reference is missing (may indicate data corruption or tombstones)
+    if (!parent) {
+      this.log(`getParent: missing parent reference for ${element.id} -> ${parentId}`);
+    }
+
+    return parent;
   }
 }
