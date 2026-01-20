@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { BeadsIssue, IssueType } from './core/types';
+import type { BeadsIssue, IssueStatus, IssueType } from './core/types';
 import {
   computeIssueDepths,
   DEFAULT_RECENT_WINDOW_MINUTES,
@@ -16,7 +16,8 @@ import {
 } from './utils';
 
 // Helper to create minimal BeadsIssue for testing
-function createTestIssue(id: string, parentId?: string): BeadsIssue {
+// Supports both single parentId and multiple parentIds
+function createTestIssue(id: string, parentId?: string, parentIds?: string[]): BeadsIssue {
   return {
     id,
     title: `Issue ${id}`,
@@ -29,7 +30,7 @@ function createTestIssue(id: string, parentId?: string): BeadsIssue {
     closed_at: null,
     assignee: null,
     labels: [],
-    parentId,
+    parentIds: parentIds ?? (parentId ? [parentId] : []),
   };
 }
 
@@ -164,6 +165,64 @@ describe('computeIssueDepths', () => {
     expect(result.get('root')).toBe(0);
     expect(result.get('child')).toBe(1);
     expect(result.get('grandchild')).toBe(2);
+  });
+
+  describe('multiple parents', () => {
+    it('uses minimum depth when issue has multiple parents at same depth', () => {
+      // Two roots, child has both as parents
+      const root1 = createTestIssue('root1');
+      const root2 = createTestIssue('root2');
+      const child = createTestIssue('child', undefined, ['root1', 'root2']);
+
+      const result = computeIssueDepths([root1, root2, child]);
+      expect(result.get('root1')).toBe(0);
+      expect(result.get('root2')).toBe(0);
+      expect(result.get('child')).toBe(1); // min(0+1, 0+1) = 1
+    });
+
+    it('uses minimum depth when parents are at different depths', () => {
+      // root -> middle -> deep, shallow is root-level
+      // child has both middle (depth 1) and shallow (depth 0) as parents
+      const root = createTestIssue('root');
+      const middle = createTestIssue('middle', 'root');
+      const shallow = createTestIssue('shallow');
+      const child = createTestIssue('child', undefined, ['middle', 'shallow']);
+
+      const result = computeIssueDepths([root, middle, shallow, child]);
+      expect(result.get('root')).toBe(0);
+      expect(result.get('middle')).toBe(1);
+      expect(result.get('shallow')).toBe(0);
+      expect(result.get('child')).toBe(1); // min(1+1, 0+1) = 1
+    });
+
+    it('handles diamond dependency pattern', () => {
+      // grandparent -> parent1, parent2 -> child (child has both parent1 and parent2)
+      const grandparent = createTestIssue('grandparent');
+      const parent1 = createTestIssue('parent1', 'grandparent');
+      const parent2 = createTestIssue('parent2', 'grandparent');
+      const child = createTestIssue('child', undefined, ['parent1', 'parent2']);
+
+      const result = computeIssueDepths([grandparent, parent1, parent2, child]);
+      expect(result.get('grandparent')).toBe(0);
+      expect(result.get('parent1')).toBe(1);
+      expect(result.get('parent2')).toBe(1);
+      expect(result.get('child')).toBe(2); // min(1+1, 1+1) = 2
+    });
+
+    it('handles issue with one valid parent and one missing parent', () => {
+      const root = createTestIssue('root');
+      const child = createTestIssue('child', undefined, ['root', 'missing']);
+
+      const result = computeIssueDepths([root, child]);
+      expect(result.get('root')).toBe(0);
+      expect(result.get('child')).toBe(1); // Only valid parent (root) used
+    });
+
+    it('treats issue as root when all parents are missing', () => {
+      const orphan = createTestIssue('orphan', undefined, ['missing1', 'missing2']);
+      const result = computeIssueDepths([orphan]);
+      expect(result.get('orphan')).toBe(0);
+    });
   });
 });
 
@@ -640,10 +699,12 @@ describe('truncateTitle', () => {
 
 describe('shouldAutoExpandInRecent', () => {
   // Helper to create test issue with specific status
+  // Supports both single parentId and multiple parentIds
   function makeIssue(
     id: string,
     opts: {
       parentId?: string;
+      parentIds?: string[];
       status?: 'open' | 'in_progress' | 'blocked' | 'closed';
       priority?: number;
       issue_type?: IssueType;
@@ -661,7 +722,7 @@ describe('shouldAutoExpandInRecent', () => {
       closed_at: opts.status === 'closed' ? '2025-01-15T12:00:00.000Z' : null,
       assignee: null,
       labels: [],
-      parentId: opts.parentId,
+      parentIds: opts.parentIds ?? (opts.parentId ? [opts.parentId] : []),
     };
   }
 
@@ -812,6 +873,45 @@ describe('shouldAutoExpandInRecent', () => {
     const child = makeIssue('child', { parentId: 'parent', status: 'in_progress', priority: 100 });
     const allIssues = [parent, child];
     expect(shouldAutoExpandInRecent(parent, allIssues)).toBe(true);
+  });
+
+  describe('multiple parents', () => {
+    it('child with multiple parents causes all parents to expand when child is open', () => {
+      const parent1 = makeIssue('parent1', {});
+      const parent2 = makeIssue('parent2', {});
+      const child = makeIssue('child', { parentIds: ['parent1', 'parent2'], status: 'open' });
+      const allIssues = [parent1, parent2, child];
+
+      // Both parents should want to expand because child is open
+      expect(shouldAutoExpandInRecent(parent1, allIssues)).toBe(true);
+      expect(shouldAutoExpandInRecent(parent2, allIssues)).toBe(true);
+    });
+
+    it('child with multiple parents - all closed causes no expansion', () => {
+      const parent1 = makeIssue('parent1', {});
+      const parent2 = makeIssue('parent2', {});
+      const child = makeIssue('child', { parentIds: ['parent1', 'parent2'], status: 'closed' });
+      const allIssues = [parent1, parent2, child];
+
+      // Neither parent should expand because child is closed
+      expect(shouldAutoExpandInRecent(parent1, allIssues)).toBe(false);
+      expect(shouldAutoExpandInRecent(parent2, allIssues)).toBe(false);
+    });
+
+    it('diamond pattern - grandparent expands when grandchild is open', () => {
+      // Diamond: grandparent -> parent1, parent2 -> child
+      const grandparent = makeIssue('grandparent', {});
+      const parent1 = makeIssue('parent1', { parentId: 'grandparent', status: 'closed' });
+      const parent2 = makeIssue('parent2', { parentId: 'grandparent', status: 'closed' });
+      const child = makeIssue('child', { parentIds: ['parent1', 'parent2'], status: 'open' });
+      const allIssues = [grandparent, parent1, parent2, child];
+
+      // Grandparent should expand because there's an open descendant
+      expect(shouldAutoExpandInRecent(grandparent, allIssues)).toBe(true);
+      // Both parents should expand because their child is open
+      expect(shouldAutoExpandInRecent(parent1, allIssues)).toBe(true);
+      expect(shouldAutoExpandInRecent(parent2, allIssues)).toBe(true);
+    });
   });
 });
 
@@ -1095,14 +1195,22 @@ describe('sortIssuesForRecentView', () => {
   const makeIssue = (
     overrides: Partial<{
       id: string;
-      status: string;
+      status: IssueStatus;
       priority: number;
       closed_at: string | null;
       updated_at: string;
       issue_type: string;
     }>,
-  ) => ({
-    status: 'open',
+  ): {
+    id: string;
+    status: IssueStatus;
+    priority: number;
+    closed_at: string | null;
+    updated_at: string;
+    issue_type: string;
+  } => ({
+    id: overrides.id ?? 'test',
+    status: 'open' as IssueStatus,
     priority: 2,
     closed_at: null,
     updated_at: '2025-01-01T00:00:00.000Z',

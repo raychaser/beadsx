@@ -26,11 +26,12 @@ export function IssueTree({
   const depthMap = useMemo(() => computeIssueDepths(issues), [issues]);
 
   // Memoize children lookup for O(1) checks
+  // An issue ID is in this set if at least one issue has it as a parent
   const childrenSet = useMemo(() => {
     const set = new Set<string>();
     for (const issue of issues) {
-      if (issue.parentId) {
-        set.add(issue.parentId);
+      for (const parentId of issue.parentIds) {
+        set.add(parentId);
       }
     }
     return set;
@@ -44,11 +45,19 @@ export function IssueTree({
   }, [visibleIssues]);
 
   // Memoize last-child lookup for O(1) checks instead of O(n) filter calls
+  // With multiple parents, track last child for each parent ID
   const lastChildMap = useMemo(() => {
-    // Group issues by parentId and track the last one in each group
     const map = new Map<string | undefined, string>();
     for (const issue of visibleIssues) {
-      map.set(issue.parentId ?? undefined, issue.id);
+      if (issue.parentIds.length === 0) {
+        // Root issue
+        map.set(undefined, issue.id);
+      } else {
+        // Track this issue as last child for all its parents
+        for (const parentId of issue.parentIds) {
+          map.set(parentId, issue.id);
+        }
+      }
     }
     return map;
   }, [visibleIssues]);
@@ -73,9 +82,21 @@ export function IssueTree({
     return idx;
   };
 
-  // O(1) check if issue is last child of its parent
+  // O(1) check if issue is last child of any of its parents
+  // With multiple parents, check if this issue is the last child for any of its parent IDs
+  //
+  // LIMITATION: For issues with multiple parents, this returns true if the issue is
+  // the last child of ANY parent, not the specific parent context being rendered.
+  // This means the tree connector visual (└── vs ├──) may be incorrect when an
+  // issue appears under multiple parents. A fully correct implementation would
+  // require tracking the current parent context during rendering and using
+  // position-aware lookups, which would add complexity for a minor visual edge case.
   const isLastChild = (issue: BeadsIssue): boolean => {
-    return lastChildMap.get(issue.parentId ?? undefined) === issue.id;
+    if (issue.parentIds.length === 0) {
+      return lastChildMap.get(undefined) === issue.id;
+    }
+    // Check if it's the last child for any of its parents
+    return issue.parentIds.some((parentId) => lastChildMap.get(parentId) === issue.id);
   };
 
   // Slice visible issues based on scroll offset and tree height
