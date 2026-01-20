@@ -4,7 +4,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { parse as parseYaml } from 'yaml';
+import { parse as parseYaml, YAMLParseError } from 'yaml';
 import type { ThemeMode } from './theme';
 
 /**
@@ -34,33 +34,123 @@ export function getConfigPath(): string {
 }
 
 /**
+ * Type guard to validate a ThemeDefault entry from parsed YAML.
+ */
+function isValidThemeDefault(entry: unknown): entry is ThemeDefault {
+  if (!entry || typeof entry !== 'object') return false;
+  const obj = entry as Record<string, unknown>;
+  return typeof obj.prefix === 'string' && obj.prefix.trim() !== '';
+  // Note: mode is validated separately to allow case-insensitive matching
+}
+
+/**
+ * Validate parsed YAML has the expected BdxUserConfig structure.
+ */
+function isValidConfig(parsed: unknown): parsed is BdxUserConfig {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return false;
+  }
+  const obj = parsed as Record<string, unknown>;
+
+  // Empty config (no theme key) is valid
+  if (obj.theme === undefined) return true;
+
+  // If theme exists, it must be an object
+  if (typeof obj.theme !== 'object' || obj.theme === null || Array.isArray(obj.theme)) {
+    return false;
+  }
+
+  const theme = obj.theme as Record<string, unknown>;
+
+  // If defaults exists, it must be an array
+  if (theme.defaults === undefined) return true;
+  if (!Array.isArray(theme.defaults)) return false;
+
+  // Each entry must have a valid prefix (mode validated at usage time)
+  return theme.defaults.every(isValidThemeDefault);
+}
+
+// Cached config to avoid re-reading file on every call
+let cachedConfig: BdxUserConfig | null | undefined;
+
+/**
+ * Clear the config cache. Useful for testing.
+ */
+export function clearConfigCache(): void {
+  cachedConfig = undefined;
+}
+
+/**
  * Load user configuration from ~/.config/bdx/config.yaml
  * Returns null if file doesn't exist or is invalid.
+ * Config is cached after first load (restart to apply changes).
  */
 export function loadUserConfig(): BdxUserConfig | null {
+  // Return cached result if available
+  if (cachedConfig !== undefined) {
+    return cachedConfig;
+  }
+
   const configPath = getConfigPath();
 
-  try {
-    if (!fs.existsSync(configPath)) {
-      return null;
-    }
-
-    const content = fs.readFileSync(configPath, 'utf-8');
-    if (!content.trim()) {
-      return null;
-    }
-
-    const parsed = parseYaml(content);
-    if (!parsed || typeof parsed !== 'object') {
-      return null;
-    }
-
-    return parsed as BdxUserConfig;
-  } catch (err) {
-    // Log warning but don't fail - continue with terminal detection
-    console.warn(`[config] Failed to load ${configPath}: ${err}`);
+  // Check if file exists (before try block to distinguish from other errors)
+  if (!fs.existsSync(configPath)) {
+    cachedConfig = null;
     return null;
   }
+
+  let content: string;
+  try {
+    content = fs.readFileSync(configPath, 'utf-8');
+  } catch (err) {
+    // Handle filesystem errors with specific messages
+    if (err instanceof Error && 'code' in err) {
+      const fsErr = err as NodeJS.ErrnoException;
+      if (fsErr.code === 'EACCES') {
+        console.error(`[config] Permission denied reading ${configPath}. Check file permissions.`);
+      } else if (fsErr.code === 'ENOENT') {
+        // Race condition - file was deleted between existsSync and readFile
+        cachedConfig = null;
+        return null;
+      } else {
+        console.error(`[config] Failed to read ${configPath}: ${fsErr.message} (${fsErr.code})`);
+      }
+    } else {
+      console.error(`[config] Unexpected error reading ${configPath}: ${err}`);
+    }
+    cachedConfig = null;
+    return null;
+  }
+
+  if (!content.trim()) {
+    cachedConfig = null;
+    return null;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(content);
+  } catch (err) {
+    // YAML parse errors are user-actionable
+    if (err instanceof YAMLParseError) {
+      console.error(`[config] Invalid YAML in ${configPath}: ${err.message}`);
+    } else {
+      console.error(`[config] Failed to parse ${configPath}: ${err instanceof Error ? err.message : err}`);
+    }
+    console.error('[config] Please check the syntax of your config file.');
+    cachedConfig = null;
+    return null;
+  }
+
+  // Validate structure before returning
+  if (!isValidConfig(parsed)) {
+    console.warn(`[config] ${configPath} has invalid structure. Expected: theme.defaults array with prefix entries.`);
+    cachedConfig = null;
+    return null;
+  }
+
+  cachedConfig = parsed;
+  return parsed;
 }
 
 /**
@@ -80,6 +170,7 @@ function normalizePath(p: string): string {
 /**
  * Get the configured theme for a directory.
  * Matches against prefix entries, longest match wins.
+ * Mode comparison is case-insensitive ('Dark' works as 'dark').
  *
  * @param cwd - Current working directory to match
  * @returns Theme mode if a prefix matches, undefined otherwise
@@ -93,22 +184,27 @@ export function getThemeForDirectory(cwd: string): ThemeMode | undefined {
   const normalizedCwd = normalizePath(cwd);
   const defaults = config.theme.defaults;
 
-  // Sort by prefix length descending (longest match wins)
-  const sorted = [...defaults].sort((a, b) => {
-    const lenA = normalizePath(a.prefix).length;
-    const lenB = normalizePath(b.prefix).length;
-    return lenB - lenA;
-  });
+  // Pre-compute normalized paths to avoid redundant computation during sort
+  const withNormalized = defaults.map((entry) => ({
+    entry,
+    normalizedPrefix: normalizePath(entry.prefix),
+  }));
 
-  for (const entry of sorted) {
-    const normalizedPrefix = normalizePath(entry.prefix);
+  // Sort by prefix length descending (longest match wins)
+  const sorted = withNormalized.sort((a, b) => b.normalizedPrefix.length - a.normalizedPrefix.length);
+
+  for (const { entry, normalizedPrefix } of sorted) {
     // Check if cwd starts with prefix (prefix match)
     if (normalizedCwd === normalizedPrefix || normalizedCwd.startsWith(`${normalizedPrefix}/`)) {
-      // Validate mode
-      if (entry.mode === 'dark' || entry.mode === 'light') {
-        return entry.mode;
+      // Validate mode (case-insensitive)
+      const normalizedMode = typeof entry.mode === 'string' ? entry.mode.toLowerCase() : entry.mode;
+      if (normalizedMode === 'dark' || normalizedMode === 'light') {
+        return normalizedMode;
       }
-      console.warn(`[config] Invalid theme mode "${entry.mode}" for prefix "${entry.prefix}"`);
+      console.warn(
+        `[config] Invalid theme mode "${entry.mode}" for prefix "${entry.prefix}". ` +
+          'Expected "dark" or "light".',
+      );
     }
   }
 

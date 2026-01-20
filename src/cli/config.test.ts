@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getConfigPath, getThemeForDirectory, loadUserConfig } from './config';
+import { clearConfigCache, getConfigPath, getThemeForDirectory, loadUserConfig } from './config';
 
 // Mock fs and os modules
 vi.mock('node:fs');
@@ -32,6 +32,7 @@ describe('loadUserConfig', () => {
   beforeEach(() => {
     vi.mocked(os.homedir).mockReturnValue('/home/user');
     delete process.env.XDG_CONFIG_HOME;
+    clearConfigCache(); // Clear cache before each test
   });
 
   afterEach(() => {
@@ -74,26 +75,127 @@ theme:
     });
   });
 
-  it('returns null and logs warning for invalid YAML', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it('returns null and logs error for invalid YAML', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.readFileSync).mockReturnValue('invalid: yaml: content: [');
     const result = loadUserConfig();
     expect(result).toBeNull();
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to load'));
-    warnSpy.mockRestore();
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid YAML'));
+    errorSpy.mockRestore();
   });
 
   it('returns null when fs.readFileSync throws', () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.readFileSync).mockImplementation(() => {
       throw new Error('Permission denied');
     });
     const result = loadUserConfig();
     expect(result).toBeNull();
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to load'));
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Unexpected error'));
+    errorSpy.mockRestore();
+  });
+
+  it('returns null when YAML parses to a non-object value', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue('just a string');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = loadUserConfig();
+    expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('invalid structure'));
     warnSpy.mockRestore();
+  });
+
+  it('returns null when YAML parses to an array', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue('- item1\n- item2');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = loadUserConfig();
+    expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('invalid structure'));
+    warnSpy.mockRestore();
+  });
+
+  it('returns null when YAML content is explicit null', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue('~');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = loadUserConfig();
+    expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('invalid structure'));
+    warnSpy.mockRestore();
+  });
+
+  it('returns null when theme.defaults is not an array', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(`
+theme:
+  defaults: "not-an-array"
+`);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = loadUserConfig();
+    expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('invalid structure'));
+    warnSpy.mockRestore();
+  });
+
+  it('returns null when entry is missing prefix', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(`
+theme:
+  defaults:
+    - mode: dark
+`);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = loadUserConfig();
+    expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('invalid structure'));
+    warnSpy.mockRestore();
+  });
+
+  it('returns null when prefix is not a string', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(`
+theme:
+  defaults:
+    - prefix: 123
+      mode: dark
+`);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = loadUserConfig();
+    expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('invalid structure'));
+    warnSpy.mockRestore();
+  });
+
+  it('logs specific error for permission denied', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockImplementation(() => {
+      const err = new Error('EACCES') as NodeJS.ErrnoException;
+      err.code = 'EACCES';
+      throw err;
+    });
+    const result = loadUserConfig();
+    expect(result).toBeNull();
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Permission denied'));
+    errorSpy.mockRestore();
+  });
+
+  it('caches config after first load', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(`
+theme:
+  defaults:
+    - prefix: /home/user/projects
+      mode: dark
+`);
+    const result1 = loadUserConfig();
+    const result2 = loadUserConfig();
+    expect(result1).toEqual(result2);
+    // readFileSync should only be called once due to caching
+    expect(fs.readFileSync).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -101,6 +203,7 @@ describe('getThemeForDirectory', () => {
   beforeEach(() => {
     vi.mocked(os.homedir).mockReturnValue('/home/user');
     delete process.env.XDG_CONFIG_HOME;
+    clearConfigCache(); // Clear cache before each test
   });
 
   afterEach(() => {
@@ -257,5 +360,29 @@ theme:
 `);
     const result = getThemeForDirectory('/home/user/projects/app');
     expect(result).toBe('dark');
+  });
+
+  it('handles case-insensitive mode (Dark -> dark)', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(`
+theme:
+  defaults:
+    - prefix: /home/user/projects
+      mode: Dark
+`);
+    const result = getThemeForDirectory('/home/user/projects/app');
+    expect(result).toBe('dark');
+  });
+
+  it('handles case-insensitive mode (LIGHT -> light)', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(`
+theme:
+  defaults:
+    - prefix: /home/user/projects
+      mode: LIGHT
+`);
+    const result = getThemeForDirectory('/home/user/projects/app');
+    expect(result).toBe('light');
   });
 });
