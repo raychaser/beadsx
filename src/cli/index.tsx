@@ -92,7 +92,8 @@ async function main() {
   }
 
   // Detect theme BEFORE creating renderer (OSC 11 needs stdin before renderer takes it)
-  const initialTheme = await detectThemeModeAsync();
+  // Pass workspaceRoot for config prefix matching
+  const initialTheme = await detectThemeModeAsync(workspaceRoot);
 
   const renderer = await createCliRenderer({
     exitOnCtrlC: true,
