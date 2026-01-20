@@ -1,6 +1,7 @@
 // Theme system for terminal dark/light mode support
 
 import { createContext, useContext } from 'react';
+import { getThemeForDirectory } from './config';
 
 export type ThemeMode = 'dark' | 'light';
 
@@ -224,17 +225,26 @@ async function queryTerminalBackground(
  *
  * Priority:
  * 1. BDX_THEME env var - explicit user override
- * 2. OSC 11 query - dynamic terminal background detection
- * 3. COLORFGBG env var - fallback for terminals without OSC 11
- * 4. Default to dark
+ * 2. ~/.config/bdx/config.yaml prefix match - pinned preference per directory
+ * 3. OSC 11 query - dynamic terminal background detection
+ * 4. COLORFGBG env var - fallback for terminals without OSC 11
+ * 5. Default to dark
+ *
+ * @param cwd - Current working directory for config prefix matching (defaults to process.cwd())
  */
-export async function detectThemeModeAsync(): Promise<ThemeMode> {
+export async function detectThemeModeAsync(cwd?: string): Promise<ThemeMode> {
   // 1. Explicit user override
   const bdxTheme = process.env.BDX_THEME?.toLowerCase();
   if (bdxTheme === 'dark') return 'dark';
   if (bdxTheme === 'light') return 'light';
 
-  // 2. OSC 11 query (if TTY)
+  // 2. Check user config for prefix match
+  const configuredTheme = getThemeForDirectory(cwd ?? process.cwd());
+  if (configuredTheme) {
+    return configuredTheme;
+  }
+
+  // 3. OSC 11 query (if TTY)
   const bg = await queryTerminalBackground(100);
   if (bg) {
     const luminance = calculateLuminance(bg.r, bg.g, bg.b);
@@ -242,7 +252,7 @@ export async function detectThemeModeAsync(): Promise<ThemeMode> {
     return luminance > 0.5 ? 'light' : 'dark';
   }
 
-  // 3. Fallback to sync detection (COLORFGBG + default)
+  // 4. Fallback to sync detection (COLORFGBG + default)
   return detectThemeMode();
 }
 
