@@ -135,7 +135,7 @@
     "bdx": "./bin/bdx.js"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.3.8",
+    "@biomejs/biome": "^2.3.11",
     "@opentui/core": "^0.1.63",
     "@opentui/core-darwin-arm64": "^0.1.66",
     "@opentui/core-darwin-x64": "^0.1.66",
